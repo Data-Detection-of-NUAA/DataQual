@@ -28,6 +28,63 @@
 
 </div>
 
+## ❕开发规范
+
+为了保证代码质量和团队协作效率，请严格遵守以下开发规范：
+
+### 📌 Git 分支管理规范
+
+#### 分支说明
+
+| 分支类型 | 说明 | 命名规范 |
+|---------|------|---------|
+| `main` | 生产环境分支，受保护，禁止直接提交 | `main` |
+| `develop` | 开发环境分支，测试通过后合并到 main | `develop` |
+| `feature` | 功能开发分支，从 develop 创建 | `feature/功能名称` |
+
+#### 开发流程
+
+1. **克隆项目**
+   ```bash
+   git clone https://gitee.com/tao__tao/FastapiAdmin.git
+   # 或
+   git clone https://github.com/1014TaoTao/FastapiAdmin.git
+   cd FastapiAdmin
+   ```
+
+2. **创建功能分支**
+   ```bash
+   # 切换到 develop 分支并更新
+   git checkout develop
+   git pull origin develop
+
+   # 创建并切换到新的功能分支
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **开发与提交**
+   ```bash
+   # 开发完成后提交代码
+   git add .
+   git commit -m "feat: 添加xxx功能"
+   git push origin feature/your-feature-name
+   ```
+
+4. **代码合并**
+   - **合并到 develop**：功能开发完成后，创建 Pull Request/Merge Request 合并到 `develop` 分支
+   - **测试验证**：在 develop 分支进行测试，确保功能正常
+   - **合并到 main**：测试通过后，从 `develop` 创建 Pull Request/Merge Request 合并到 `main` 分支
+
+
+#### ⚠️ 重要规则
+
+- ❌ **禁止直接在 `main` 分支进行开发和提交**
+- ❌ **禁止直接将功能分支合并到 `main` 分支**
+- ✅ **所有功能开发必须在独立的 feature 分支进行**
+- ✅ **代码合并必须先合并到 `develop` 分支进行测试**
+- ✅ **测试通过后才能从 `develop` 合并到 `main` 分支**
+- ✅ **合并代码前必须先 pull 最新代码并解决冲突**
+
 ## 📘 项目介绍
 
 **FastApiAdmin** 是一套 **完全开源、高度模块化、技术先进的现代化快速开发平台**，旨在帮助开发者高效搭建高质量的企业级中后台系统。该项目采用 **前后端分离架构**，融合 Python 后端框架 `FastAPI` 和前端主流框架 `Vue3` 实现多端统一开发，提供了一站式开箱即用的开发体验。
@@ -109,12 +166,12 @@ FastapiAdmin
 ### 环境要求
 
 | 类型 | 技术栈 | 版本 |
-|------|--------|------|
-| 后端 | Python | 3.12 ≥ 3.10 |
+|------|--------|-----|
+| 后端 | Python | 3.12 |
 | 后端 | FastAPI | 0.109+ |
 | 前端 | Node.js | ≥ 20.0 |
 | 前端 | Vue3 | 3.3+ |
-| 数据库 | MySQL | 8.0+ |
+| 数据库 | MySQL | 8.0 |
 | 缓存 | Redis | 7.0+ |
 
 ### 获取代码
