@@ -46,9 +46,9 @@
 
 1. **克隆项目**
    ```bash
-   git clone https://gitee.com/tao__tao/FastapiAdmin.git
+   git clone https://github.com/Data-Detection-of-NUAA/FastapiAdmin.git
    # 或
-   git clone https://github.com/1014TaoTao/FastapiAdmin.git
+   git clone git@github.com:Data-Detection-of-NUAA/FastapiAdmin.git
    cd FastapiAdmin
    ```
 
