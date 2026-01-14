@@ -1,0 +1,109 @@
+# 环境变量文件 - 敏感信息
+backend/env/.env.dev
+backend/env/.env.prod
+backend/env/.env.*
+# 保留示例文件
+!backend/env/.env.*.example
+
+# 前端环境变量
+frontend/.env.development
+frontend/.env.production
+frontend/.env.local
+frontend/.env*.local
+!frontend/.env*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 测试相关
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# 日志文件
+*.log
+backend/logs/
+backend/log/
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 上传文件
+backend/static/upload/
+backend/uploads/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+.cache/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Alembic
+backend/alembic/versions/*.py
+!backend/alembic/versions/__init__.py
+
+# Redis dump
+dump.rdb
+
+# 密钥文件
+*.pem
+*.key
+*.crt

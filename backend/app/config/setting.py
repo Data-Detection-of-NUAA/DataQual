@@ -202,8 +202,8 @@ class Settings(BaseSettings):
         """获取同步数据库连接"""
         if self.DATABASE_TYPE == "mysql":
             return f"mysql+pymysql://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}?charset=utf8mb4"
-        elif self.DATABASE_TYPE == "postgres":
-            return f"postgresql+psycopg2://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
+        # elif self.DATABASE_TYPE == "postgres":
+        #     return f"postgresql+psycopg2://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
         elif self.DATABASE_TYPE == "sqlite":
             return f"sqlite+pysqlite:///{self.DATABASE_NAME}.db"
         elif self.DATABASE_TYPE == "dm":
