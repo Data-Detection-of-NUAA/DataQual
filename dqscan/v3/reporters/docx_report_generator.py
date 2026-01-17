@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 
+"""
+Word（.docx）报告生成器。
+
+依赖：python-docx。
+如果依赖缺失，上层 `DetectionReportGenerator.generate_full_report` 会捕获异常并在 paths 中返回 `docx_report_error`。
+"""
+
 from __future__ import annotations
 
 import os
@@ -152,4 +159,3 @@ class DocxReportGenerator(BaseReporter):
         exp = scorer.get_scoring_explanation()
         self.doc.add_paragraph(f"方法：{exp.get('method')}")
         self.doc.add_paragraph(f"说明：{exp.get('description')}")
-

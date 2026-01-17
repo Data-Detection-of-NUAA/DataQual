@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
 
+"""
+分布偏差/漂移检测（Tabular）。
+
+核心思路：把“历史数据 vs 新数据”当作两个样本，做统计检验来判断它们是否来自同一分布。
+
+当前实现包含三类检测：
+1) MMD (Maximum Mean Discrepancy)：整体分布差异度量 + 置换检验得到 p-value
+2) K-S Test：对每个数值列做两样本 KS 检验
+3) Chi-square：对每个类别列做卡方检验
+
+输出会给出：
+- drift_detected / p_value（用于前端摘要）
+- detailed_issues（漂移列的示例）
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -31,6 +46,8 @@ except ImportError:
 
 
 class TabularDistributionScanner(BaseScanner):
+    """表格分布偏差扫描器（需要 pandas/scipy/sklearn）。"""
+
     def __init__(self, p_val: float = 0.05):
         super().__init__(name="TabularDistributionScanner")
         self.p_val = p_val
@@ -43,6 +60,13 @@ class TabularDistributionScanner(BaseScanner):
         categorical_columns: Optional[list[str]] = None,
         label_column: Optional[str] = None,
     ) -> dict[str, Any]:
+        """
+        比较两个 DataFrame 的分布差异。
+
+        - dataset1 / dataset2：两个样本集（通常是 train_df / test_df）
+        - numerical_columns / categorical_columns：可选，若不传则自动推断
+        - label_column：可选，用于检测 label shift（标签分布变化）
+        """
         if not (PANDAS_AVAILABLE and SCIPY_AVAILABLE and SKLEARN_AVAILABLE):
             missing = []
             if not PANDAS_AVAILABLE:
@@ -81,9 +105,12 @@ class TabularDistributionScanner(BaseScanner):
         }
 
         if numerical_columns:
+            # 整体（多维）漂移：MMD + permutation p-value
             results["mmd_result"] = self._detect_mmd(dataset1, dataset2, numerical_columns)
+            # 逐列漂移：KS test
             results["ks_results"] = self._detect_ks(dataset1, dataset2, numerical_columns)
         if categorical_columns:
+            # 类别列漂移：卡方检验
             results["chi2_results"] = self._detect_chi2(dataset1, dataset2, categorical_columns)
         if label_column and label_column in dataset1.columns and label_column in dataset2.columns:
             results["label_shift"] = self._detect_label_shift(dataset1, dataset2, label_column)
@@ -135,6 +162,15 @@ class TabularDistributionScanner(BaseScanner):
         return results
 
     def _detect_mmd(self, dataset1: "pd.DataFrame", dataset2: "pd.DataFrame", columns: list[str]) -> dict[str, Any]:
+        """
+        MMD 检测（RBF kernel）。
+
+        做法：
+        - 取数值列矩阵 X/Y（dropna）
+        - 限制最大样本数（避免 O(n^2) 的 kernel 计算爆炸）
+        - StandardScaler 标准化后计算 MMD
+        - 用 permutation test 得到 p_value（越小越可能漂移）
+        """
         X = dataset1[columns].dropna().values
         Y = dataset2[columns].dropna().values
 
@@ -152,6 +188,7 @@ class TabularDistributionScanner(BaseScanner):
         return {"method": "MMD (RBF Kernel)", "mmd_value": float(mmd_value), "p_value": float(p_value), "drift_detected": p_value < self.p_val}
 
     def _compute_mmd_pvalue(self, X: "np.ndarray", Y: "np.ndarray", n_perm: int = 200) -> tuple[float, float]:
+        """用置换检验估计 MMD 的 p-value（近似）。"""
         mmd_real = self._compute_mmd(X, Y)
         n, m = len(X), len(Y)
         combined = np.vstack([X, Y])
@@ -163,6 +200,14 @@ class TabularDistributionScanner(BaseScanner):
         return float(mmd_real), float(p_value)
 
     def _compute_mmd(self, X: "np.ndarray", Y: "np.ndarray") -> float:
+        """
+        计算 MMD 值（RBF kernel）。
+
+        直觉理解：
+        - 先用核函数把样本映射到高维空间
+        - 比较两个样本在高维空间的“均值差距”
+        - 差距越大，越可能来自不同分布
+        """
         n, m = X.shape[0], Y.shape[0]
         sample_size = min(1000, n, m)
         X_s = X[np.random.choice(n, sample_size, replace=False)]
@@ -229,4 +274,3 @@ class TabularDistributionScanner(BaseScanner):
                 drift_flags.append(bool(r.get("drift_rate", 0) > 0))
         drift_detected = any(drift_flags)
         return {"drift_detected": drift_detected}
-

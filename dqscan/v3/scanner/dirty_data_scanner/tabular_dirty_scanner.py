@@ -1,5 +1,19 @@
 # -*- coding: utf-8 -*-
 
+"""
+脏数据扫描（Tabular）。
+
+目标：快速给出“这份表格数据是否存在明显质量问题”的可解释信号。
+
+当前实现包含四类检测：
+1) 异常值：优先 pyod.ECOD；否则用 3σ 规则降级
+2) 缺失值：统计每列缺失量
+3) 重复行：完全重复的行
+4) 范围违规：按每列均值±3σ 的简单启发式找可疑点
+
+输出结构遵循 BaseScanner 的统一约定，便于前端展示与报告生成。
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -23,6 +37,8 @@ except ImportError:
 
 
 class TabularDirtyScanner(BaseScanner):
+    """表格脏数据扫描器（支持依赖缺失时降级）。"""
+
     def __init__(self, contamination: float = 0.1):
         super().__init__(name="TabularDirtyScanner")
         self.contamination = contamination
@@ -55,15 +71,19 @@ class TabularDirtyScanner(BaseScanner):
             "categorical_features": len(categorical_columns),
         }
 
+        # 1) 异常值（outliers）
         anomaly_results = self._detect_anomalies(data, numerical_columns)
         results["anomaly_detection"] = anomaly_results
 
+        # 2) 缺失值（missing values）
         missing_results = self._detect_missing(data)
         results["missing_values"] = missing_results
 
+        # 3) 重复数据（duplicate rows）
         duplicate_results = self._detect_duplicates(data)
         results["duplicates"] = duplicate_results
 
+        # 4) 简单范围违规（每列均值±3σ）
         range_results = self._detect_range_violations(data, numerical_columns)
         results["range_violations"] = range_results
 
@@ -117,6 +137,12 @@ class TabularDirtyScanner(BaseScanner):
         return results
 
     def _detect_anomalies(self, data: "pd.DataFrame", numerical_columns: list[str]) -> dict[str, Any]:
+        """
+        异常值检测。
+
+        - 有 pyod 时：ECOD（无监督异常检测）
+        - 无 pyod 时：对每行计算 z-score，任一列 |z|>3 认为该行异常（粗粒度但可用）
+        """
         if len(numerical_columns) == 0:
             return {"method": "ECOD", "anomaly_count": 0, "anomaly_rate": 0.0}
 
@@ -198,4 +224,3 @@ class TabularDirtyScanner(BaseScanner):
                 violations[str(col)] = {"count": len(violating), "bounds": [float(lower_bound), float(upper_bound)]}
                 total_violations += len(violating)
         return {"total_violations": int(total_violations), "violations_by_column": violations}
-

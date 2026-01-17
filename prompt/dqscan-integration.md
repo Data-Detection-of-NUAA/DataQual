@@ -2,6 +2,9 @@
 
 本文档描述“数据集质量探测引擎（dqscan）”在本仓库中的前后端集成位置、模块职责与调用方式，便于后续迭代与容器化拆分。
 
+补充：
+- 如果你是想“读懂代码/理解算法/学习输入输出”，请看：`prompt/dqscan-code-walkthrough.md`
+
 ## 目标
 
 - 算法引擎独立放在仓库根目录 `dqscan/`，未来可直接抽离成独立服务。
@@ -119,4 +122,3 @@
 - `cd frontend && pnpm dev`
 - 若当前环境无法联网获取 pnpm，可直接用已安装依赖运行（示例）：
   - `cd frontend && node node_modules/vite/bin/vite.js`
-

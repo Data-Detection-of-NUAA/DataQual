@@ -1,5 +1,9 @@
 import request from "@/utils/request";
 
+// dqscan 前端 API 封装：与后端 `backend/app/plugin/module_application/dqscan/controller.py` 一一对应
+// - 上传文件 → 返回 file_id
+// - 创建任务 → 返回 task_id
+// - 查询任务/获取结果/下载产物
 const API_PATH = "/application/dqscan";
 
 export interface DQScanUploadOut {
@@ -99,4 +103,3 @@ const DQScanAPI = {
 };
 
 export default DQScanAPI;
-

@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
 
+"""
+dqscan API 的 Pydantic 模型（请求/响应契约）。
+
+读代码时你可以把它当作“前后端的数据协议说明书”：
+- 哪些字段是必填/可选
+- 默认算法名是什么
+- status 的枚举范围是什么
+"""
+
 from __future__ import annotations
 
 from typing import Any, Generic, Literal, TypeVar

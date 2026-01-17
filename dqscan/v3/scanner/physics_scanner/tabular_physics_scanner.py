@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
 
+"""
+物理保真度/约束一致性检测（Tabular）。
+
+你可以把它理解为“数据是否违反明显的物理/业务规则”：
+- 例如年龄必须在 [0,120]，金额不能为负，比例必须在 [0,1] 等
+
+实现上分两档：
+- 有 pandera：用 DataFrameSchema + Check(ge/le) 进行校验并提取 failure_cases
+- 无 pandera：降级用简单的 pandas 过滤逻辑
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -216,4 +227,3 @@ class TabularPhysicsScanner(BaseScanner):
         if violation_rate > 0.05:
             return "moderate"
         return "light"
-

@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 
+"""
+dqscan WebSocket 路由。
+
+用途：前端订阅任务的实时日志与进度。
+事件由 `DQScanService` 广播（snapshot/log/progress/done/error）。
+"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket

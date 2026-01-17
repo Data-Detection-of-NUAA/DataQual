@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
 
+"""
+dqscan 的 HTTP API（FastAPI Router）。
+
+这层只做“HTTP 协议适配”，核心业务在 `service.py`：
+- upload：上传文件到 `backend/static/dqscan/uploads/`
+- tasks：创建任务并异步执行（后台线程跑算法）
+- result/artifact：读取任务目录下落盘的产物
+
+前端对应调用：`frontend/src/api/module_application/dqscan.ts`
+"""
+
 from __future__ import annotations
 
 import json

@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
 
+"""
+检测报告生成器（JSON / Summary / DOCX）。
+
+上层引擎（quality_engine_v3）会把每个模块的结果交给本类：
+- 生成结构化 json 报告（完整/压缩结果）
+- 生成 summary 报告（给前端/快速浏览用）
+- 可选生成 docx（依赖 python-docx）
+"""
+
 from __future__ import annotations
 
 import os
@@ -10,6 +19,8 @@ from .scoring import AdversarialScorer, DirtyDataScorer, DistributionScorer, Phy
 
 
 class DetectionReportGenerator(BaseReporter):
+    """把扫描结果 → 多种报告文件，并负责评分（scoring）。"""
+
     SCORERS = {
         "distribution": DistributionScorer,
         "dirty_data": DirtyDataScorer,
@@ -123,4 +134,3 @@ class DetectionReportGenerator(BaseReporter):
             else:
                 out[k] = v
         return out
-

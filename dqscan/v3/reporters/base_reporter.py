@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
 
+"""
+报告生成基类（Reporter Base）。
+
+Reporter 的职责：
+- 统一管理输出目录（output_dir/reports）
+- 提供 JSON 写入工具（save_json）
+- 处理一个常见工程坑：numpy 类型不可直接 JSON 序列化（convert_numpy_types）
+"""
+
 from __future__ import annotations
 
 import json
@@ -64,6 +73,14 @@ class BaseReporter(ABC):
         return "all"
 
     def convert_numpy_types(self, obj: Any) -> Any:
+        """
+        将 numpy 类型递归转换为 Python 原生类型，保证 json.dumps/json.dump 可用。
+
+        典型场景：
+        - np.float32 / np.int64 / np.bool_ 等
+        - np.ndarray
+        - NaN/Inf（JSON 不支持）会转换为 None
+        """
         try:
             import numpy as np  # type: ignore
 
@@ -91,4 +108,3 @@ class BaseReporter(ABC):
     def save_json(self, data: dict[str, Any], filepath: str) -> None:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.convert_numpy_types(data), f, indent=2, ensure_ascii=False)
-

@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
 
+"""
+对抗性检测（Tabular）。
+
+本模块的目标是给出一个“模型是否容易被小扰动攻击翻车”的粗粒度信号。
+
+- 优先使用 IBM ART（如已安装）执行 ZOO 黑盒攻击
+- 未安装 ART 时，使用随机扰动搜索的降级攻击，保证整体流程可运行
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -220,4 +229,3 @@ class TabularAdversarialScanner(BaseScanner):
         if attack_success_rate > 0.3:
             return "moderate"
         return "light"
-

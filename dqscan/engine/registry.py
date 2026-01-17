@@ -1,3 +1,15 @@
+"""
+算法注册表（registry）。
+
+为什么需要 registry？
+- 后端需要提供“算法列表”给前端 → `list_algorithms()`
+- 后端需要“按名字执行算法” → `get_algorithm(name)`
+
+当前实现采用“懒发现”（lazy discover）：
+- 第一次 list/get 时才 import 并 register 内置算法
+- 好处：启动快、避免不必要依赖在 import 阶段就报错
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,8 +20,8 @@ _ALGORITHMS: dict[str, Algorithm] = {}
 _DISCOVERED = False
 
 
-
 def register(algorithm: Algorithm) -> None:
+    """注册一个算法实例（通常在 `_discover()` 里调用）。"""
     name = algorithm.spec.name
     if not name:
         raise ValueError("algorithm.spec.name is required")
@@ -19,6 +31,7 @@ def register(algorithm: Algorithm) -> None:
 
 
 def _discover() -> None:
+    """发现并注册内置算法（只执行一次）。"""
     global _DISCOVERED
     if _DISCOVERED or _ALGORITHMS:
         return
@@ -30,6 +43,7 @@ def _discover() -> None:
 
 
 def list_algorithms() -> list[dict[str, Any]]:
+    """返回所有已注册算法的 spec 信息（用于 UI 展示）。"""
     _discover()
     return [
         {
@@ -43,6 +57,7 @@ def list_algorithms() -> list[dict[str, Any]]:
 
 
 def get_algorithm(name: str) -> Algorithm:
+    """按算法名获取算法实例（不存在则抛 KeyError）。"""
     _discover()
     try:
         return _ALGORITHMS[name]

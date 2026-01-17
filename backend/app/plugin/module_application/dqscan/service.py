@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
 
+"""
+dqscan 后端适配层：任务管理 + 运行引擎 + WebSocket 推送
+
+这层代码的定位是“工程胶水”，把仓库根目录的 `dqscan/` 算法引擎接入 FastAPI：
+
+- 上传文件落盘：`backend/static/dqscan/uploads/`
+- 创建任务目录：`backend/static/dqscan/tasks/{task_id}/`
+- 异步执行算法：`asyncio.to_thread(alg.run, ...)` 避免阻塞事件循环
+- 事件推送：算法通过 `emit({...})` 上报 log/progress/done/error，本服务广播到 WebSocket 客户端
+
+注意：
+- 任务状态当前只保存在内存（`DQScanService._tasks`），服务重启后状态会丢失；
+- 结果文件落盘在 static 目录，因此前端可通过 “result/artifact” 接口拉取。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +34,12 @@ from app.config.path_conf import BASE_DIR, STATIC_DIR
 
 
 def _find_repo_root() -> Path:
+    """
+    定位仓库根目录。
+
+    由于算法引擎 `dqscan/` 放在仓库根目录，而后端运行入口在 `backend/`，这里通过向上
+    查找同时包含 `backend/` 和 `frontend/` 的目录来判断 repo root，便于把根目录塞进 sys.path。
+    """
     here = Path(__file__).resolve()
     for p in here.parents:
         if (p / "backend").is_dir() and (p / "frontend").is_dir():
@@ -27,24 +48,33 @@ def _find_repo_root() -> Path:
 
 
 def _ensure_dqscan_importable() -> None:
+    """确保 `import dqscan` 可用（将 repo root 注入 `sys.path`）。"""
     repo_root = _find_repo_root()
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
 
 def _dqscan_root() -> Path:
+    """dqscan 的静态根目录：`backend/static/dqscan/`。"""
     return STATIC_DIR / "dqscan"
 
 
 def _uploads_root() -> Path:
+    """上传目录：`backend/static/dqscan/uploads/`。"""
     return _dqscan_root() / "uploads"
 
 
 def _tasks_root() -> Path:
+    """任务目录：`backend/static/dqscan/tasks/`。"""
     return _dqscan_root() / "tasks"
 
 
 def _safe_rel_file_id(abs_path: Path) -> str:
+    """
+    将绝对路径转换为“相对 backend 根目录”的 file_id（用于接口返回）。
+
+    这是一个安全边界：只允许返回位于 `backend/` 目录下的路径，避免把任意系统路径暴露给前端。
+    """
     abs_path = abs_path.resolve()
     base = BASE_DIR.resolve()
     if base not in abs_path.parents and abs_path != base:
@@ -53,6 +83,12 @@ def _safe_rel_file_id(abs_path: Path) -> str:
 
 
 def _resolve_file_id(file_id: str) -> Path:
+    """
+    将 file_id（相对 backend 根目录路径）解析成绝对路径，并做路径穿越防护。
+
+    约束：
+    - 只允许访问 `backend/static/dqscan/` 下的文件（上传文件、任务产物等）
+    """
     file_id = file_id.lstrip("/").replace("\\", "/")
     abs_path = (BASE_DIR / file_id).resolve()
     dq_root = _dqscan_root().resolve()
@@ -63,6 +99,7 @@ def _resolve_file_id(file_id: str) -> Path:
 
 @dataclass
 class _TaskState:
+    """任务在内存中的运行态状态（给 HTTP 查询与 WS snapshot 使用）。"""
     task_id: str
     status: str = "PENDING"
     progress: int = 0
@@ -70,15 +107,25 @@ class _TaskState:
     ended_at: float | None = None
     error: str | None = None
     result_file_id: str | None = None
+    # 每个 websocket 连接对应一个 queue：生产者（算法线程）写入事件，消费者（ws_pump）读取并发送
     ws_clients: dict[WebSocket, asyncio.Queue[dict[str, Any]]] = field(default_factory=dict)
 
 
 class DQScanService:
+    """
+    dqscan 服务层（不入库的轻量任务系统）。
+
+    - `_tasks`：内存任务表（task_id -> state）
+    - `_run_task`：后台协程，负责调用算法并写出 result.json
+    - WebSocket：允许前端订阅实时日志与进度
+    """
+
     _tasks: dict[str, _TaskState] = {}
     _lock = asyncio.Lock()
 
     @classmethod
     async def list_algorithms(cls) -> list[dict[str, Any]]:
+        """返回算法引擎中已注册的算法列表（供前端下拉选择）。"""
         _ensure_dqscan_importable()
         from dqscan.engine import list_algorithms
 
@@ -86,6 +133,13 @@ class DQScanService:
 
     @classmethod
     async def upload(cls, file: UploadFile, *, max_bytes: int) -> dict[str, Any]:
+        """
+        上传文件落盘到 static 目录，并返回 file_id。
+
+        - 以 1MB chunk 读取，避免把大文件一次性加载进内存；
+        - 超过 max_bytes 直接报错；
+        - 返回的 file_id 是“相对 backend 根目录”的路径字符串。
+        """
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in {".csv", ".txt"}:
             raise ValueError("仅支持 .csv / .txt")
@@ -120,6 +174,11 @@ class DQScanService:
 
     @classmethod
     async def create_task(cls, *, file_id: str, algorithm: str, params: dict[str, Any] | None) -> str:
+        """
+        创建任务并异步执行。
+
+        返回 task_id。任务执行不阻塞当前 HTTP 请求（后台运行）。
+        """
         task_id = uuid.uuid4().hex
         task_dir = (_tasks_root() / task_id).resolve()
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -133,6 +192,7 @@ class DQScanService:
 
     @classmethod
     async def get_task(cls, task_id: str) -> dict[str, Any]:
+        """查询任务状态（仅内存态，不保证服务重启后可查）。"""
         async with cls._lock:
             state = cls._tasks.get(task_id)
         if not state:
@@ -150,6 +210,7 @@ class DQScanService:
 
     @classmethod
     async def get_result_path(cls, task_id: str) -> Path:
+        """获取 result.json 的绝对路径（任务成功后才存在）。"""
         async with cls._lock:
             state = cls._tasks.get(task_id)
         if not state or not state.result_file_id:
@@ -158,6 +219,7 @@ class DQScanService:
 
     @classmethod
     async def get_task_dir(cls, task_id: str) -> Path:
+        """校验 task_id 并返回任务目录（用于 artifact 下载）。"""
         task_dir = (_tasks_root() / task_id).resolve()
         if not task_dir.exists():
             raise KeyError("task not found")
@@ -168,6 +230,11 @@ class DQScanService:
 
     @classmethod
     async def resolve_task_artifact(cls, task_id: str, rel_path: str) -> Path:
+        """
+        解析并校验任务产物路径（防止 path traversal）。
+
+        前端传入的 `path` 必须是任务目录下的相对路径，例如：`reports/dirty_data_report_tabular.docx`。
+        """
         task_dir = await cls.get_task_dir(task_id)
         rel_path = (rel_path or "").lstrip("/").replace("\\", "/")
         abs_path = (task_dir / rel_path).resolve()
@@ -179,6 +246,11 @@ class DQScanService:
 
     @classmethod
     async def ws_connect(cls, task_id: str, websocket: WebSocket) -> _TaskState:
+        """
+        建立 WebSocket 连接并发送 snapshot（当前状态快照）。
+
+        snapshot 之后，客户端会持续收到 `log/progress/done/error` 事件。
+        """
         async with cls._lock:
             state = cls._tasks.get(task_id)
         if not state:
@@ -218,6 +290,7 @@ class DQScanService:
 
     @classmethod
     def ws_disconnect(cls, state: _TaskState, websocket: WebSocket) -> None:
+        """断开连接时从 ws_clients 移除（避免队列泄漏）。"""
         try:
             state.ws_clients.pop(websocket, None)
         except Exception:
@@ -225,6 +298,7 @@ class DQScanService:
 
     @classmethod
     async def ws_pump(cls, state: _TaskState, websocket: WebSocket) -> None:
+        """将队列中的事件持续推送给指定 websocket。"""
         queue = state.ws_clients.get(websocket)
         if queue is None:
             return
@@ -237,6 +311,7 @@ class DQScanService:
 
     @classmethod
     def _broadcast_nowait(cls, state: _TaskState, event: dict[str, Any]) -> None:
+        """向所有已连接 websocket 广播事件（非阻塞 put_nowait）。"""
         for q in list(state.ws_clients.values()):
             try:
                 q.put_nowait(event)
@@ -245,6 +320,14 @@ class DQScanService:
 
     @classmethod
     async def _run_task(cls, *, state: _TaskState, file_id: str, algorithm: str, params: dict[str, Any] | None):
+        """
+        后台任务执行器。
+
+        - 解析 file_id → 输入文件绝对路径
+        - 调用引擎算法 `alg.run(...)`
+        - 校验并记录 result.json 路径
+        - 过程中通过 emit 写 log.txt、更新 progress、广播 WS
+        """
         state.status = "RUNNING"
         state.started_at = time.time()
         state.progress = 0
@@ -254,6 +337,9 @@ class DQScanService:
         log_file = (task_dir / "log.txt").resolve()
 
         def emit(event: dict[str, Any]) -> None:
+            # emit 可能在 worker thread 内被调用，所以这里：
+            # 1) 同步更新 state（简单字段，允许轻微竞态）
+            # 2) 用 call_soon_threadsafe 把广播调度回事件循环线程
             event = dict(event)
             event.setdefault("task_id", state.task_id)
 
