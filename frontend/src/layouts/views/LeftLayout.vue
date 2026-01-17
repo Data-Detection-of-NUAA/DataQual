@@ -1,14 +1,62 @@
 <template>
   <BaseLayout>
+    <!-- 顶栏 -->
+    <NavBar class="layout__topbar" />
+
     <!-- 左侧菜单栏 -->
-    <div class="layout__sidebar" :class="{ 'layout__sidebar--collapsed': !isSidebarOpen }">
-      <div :class="{ 'has-logo': isShowLogo }" class="layout-sidebar">
-        <!-- Logo -->
-        <AppLogo v-if="isShowLogo" :collapse="!isSidebarOpen" />
+    <div class="layout__sidebar">
+      <div class="layout-sidebar">
+        <!-- 侧栏标题 -->
+        <AppLogo />
         <!-- 主菜单内容 -->
         <el-scrollbar>
           <BasicMenu :data="routes" base-path="" />
         </el-scrollbar>
+
+        <!-- 侧栏底部用户信息 -->
+        <div class="sidebar-footer">
+          <el-dropdown trigger="click">
+            <div class="sidebar-user">
+              <div class="sidebar-user__avatar">
+                <el-avatar v-if="userAvatar" :size="36" :src="userAvatar" />
+                <el-avatar v-else :size="36" icon="UserFilled" />
+              </div>
+              <div class="sidebar-user__info">
+                <div class="sidebar-user__name">{{ userName }}</div>
+                <div class="sidebar-user__role">{{ userRole }}</div>
+              </div>
+              <el-icon class="sidebar-user__arrow"><ArrowRight /></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="handleProfileClick">
+                  <el-icon><User /></el-icon>
+                  {{ t("navbar.profile") }}
+                </el-dropdown-item>
+                <el-dropdown-item @click="handleDocumentClick">
+                  <el-icon><Document /></el-icon>
+                  {{ t("navbar.document") }}
+                </el-dropdown-item>
+                <el-dropdown-item @click="handleGiteeClick">
+                  <el-icon><Reading /></el-icon>
+                  {{ t("navbar.gitee") }}
+                </el-dropdown-item>
+                <el-dropdown-item @click="handleTourClick">
+                  <el-icon><Position /></el-icon>
+                  {{ t("navbar.tour") }}
+                </el-dropdown-item>
+                <el-dropdown-item divided @click="handlelockScreen">
+                  <el-icon><Lock /></el-icon>
+                  {{ t("navbar.lock") }}
+                </el-dropdown-item>
+                <el-dropdown-item @click="logout">
+                  <el-icon><SwitchButton /></el-icon>
+                  {{ t("navbar.logout") }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </div>
 
@@ -16,29 +64,128 @@
     <div
       :class="{
         hasTagsView: isShowTagsView,
-        'layout__main--collapsed': !isSidebarOpen,
       }"
       class="layout__main"
     >
-      <NavBar />
       <TagsView v-if="isShowTagsView" />
       <AppMain />
     </div>
+
+    <!-- 引导 -->
+    <Guide v-if="guideVisible" v-model="guideVisible" @skip="handleGuideExit" />
+
+    <!-- 锁屏弹窗 -->
+    <LockDialog v-if="dialogVisible" v-model="dialogVisible" />
+    <teleport to="body">
+      <transition name="fade-bottom" mode="out-in">
+        <LockPage v-if="getIsLock" />
+      </transition>
+    </teleport>
   </BaseLayout>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
 import { useLayout } from "../composables/useLayout";
 import { useLayoutMenu } from "../composables/useLayoutMenu";
 import BaseLayout from "./BaseLayout.vue";
-import AppLogo from "../components/AppLogo/index.vue";
 import NavBar from "../components/NavBar/index.vue";
+import AppLogo from "../components/AppLogo/index.vue";
 import TagsView from "../components/TagsView/index.vue";
 import AppMain from "../components/AppMain/index.vue";
 import BasicMenu from "../components/Menu/BasicMenu.vue";
+import { useUserStore, useLockStore, useSettingsStore, useAppStore } from "@/store";
+import { DeviceEnum } from "@/enums/settings/device.enum";
+import Guide from "@/components/Guide/index.vue";
+import LockDialog from "../components/NavBar/components/LockDialog.vue";
+import LockPage from "../components/NavBar/components/LockPage.vue";
+import {
+  ArrowRight,
+  User,
+  Document,
+  Reading,
+  Position,
+  Lock,
+  SwitchButton,
+} from "@element-plus/icons-vue";
 
 // 布局相关参数
-const { isShowTagsView, isShowLogo, isSidebarOpen } = useLayout();
+const { t } = useI18n();
+const router = useRouter();
+const { isShowTagsView } = useLayout();
+const userStore = useUserStore();
+const lockStore = useLockStore();
+const settingStore = useSettingsStore();
+const appStore = useAppStore();
+
+const userName = computed(() => userStore.basicInfo.name || "超级管理员");
+const userRole = computed(
+  () => userStore.basicInfo.roles?.[0]?.name || userStore.basicInfo.description || "系统管理员"
+);
+const userAvatar = computed(() => userStore.basicInfo.avatar || "");
+
+const guideVisible = computed({
+  get: () => appStore.guideVisible,
+  set: (newValue) => appStore.showGuide(newValue),
+});
+
+const dialogVisible = ref<boolean>(false);
+const getIsLock = computed(() => lockStore.getLockInfo?.isLock ?? false);
+
+function handleProfileClick() {
+  router.push({ name: "Profile" });
+}
+
+function handleDocumentClick() {
+  window.open("https://service.fastapiadmin.com", "_blank");
+}
+
+function handleGiteeClick() {
+  window.open("https://gitee.com/tao__tao/FastapiAdmin");
+}
+
+function handleTourClick() {
+  if (appStore.device === DeviceEnum.MOBILE) {
+    router.push({ name: "Guide" });
+  } else {
+    guideVisible.value = true;
+  }
+}
+
+function handleGuideExit() {
+  settingStore.updateSetting("showGuide", false);
+}
+
+watch(
+  () => guideVisible.value,
+  (val, oldVal) => {
+    if (oldVal && !val) {
+      settingStore.updateSetting("showGuide", false);
+    }
+  }
+);
+
+const handlelockScreen = () => {
+  dialogVisible.value = true;
+};
+
+function logout() {
+  ElMessageBox.confirm("确定注销并退出系统吗？", "提示", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    type: "warning",
+    lockScroll: false,
+  })
+    .then(() => {
+      userStore.logout().then(() => {
+        router.push(`/login`);
+      });
+    })
+    .catch(() => {
+      ElMessageBox.close();
+    });
+}
 
 // 菜单相关
 const { routes } = useLayoutMenu();
@@ -56,20 +203,16 @@ const { routes } = useLayoutMenu();
     background-color: $menu-background;
     transition: width 0.28s;
 
-    &--collapsed {
-      width: $sidebar-width-collapsed;
-    }
-
     .layout-sidebar {
       position: relative;
+      display: flex;
+      flex-direction: column;
       height: 100%;
       background-color: var(--menu-background);
       transition: width 0.28s;
 
-      &.has-logo {
-        .el-scrollbar {
-          height: calc(100vh - $navbar-height);
-        }
+      :deep(.el-scrollbar) {
+        flex: 1;
       }
 
       :deep(.el-menu) {
@@ -78,16 +221,23 @@ const { routes } = useLayoutMenu();
     }
   }
 
+  &__topbar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: $sidebar-width;
+    z-index: 1000;
+    background-color: var(--el-bg-color);
+    border-bottom: 1px solid var(--el-border-color-light);
+  }
+
   &__main {
     position: relative;
     height: 100%;
     margin-left: $sidebar-width;
+    margin-top: $navbar-height;
     overflow-y: auto;
     transition: margin-left 0.28s;
-
-    &--collapsed {
-      margin-left: $sidebar-width-collapsed;
-    }
 
     .fixed-header {
       position: sticky;
@@ -95,6 +245,55 @@ const { routes } = useLayoutMenu();
       z-index: 9;
       transition: width 0.28s;
     }
+  }
+}
+
+.sidebar-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #eceff5;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+
+  &__avatar {
+    flex-shrink: 0;
+  }
+
+  &__info {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  &__name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2430;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__role {
+    margin-top: 2px;
+    font-size: 12px;
+    color: #9aa0ad;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__arrow {
+    color: #b8becb;
+    font-size: 16px;
   }
 }
 
