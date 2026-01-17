@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import json
+import os
+import time
+from pathlib import Path
+from typing import Any
+
+from ...base import AlgorithmSpec, EmitEvent
+
+
+class TabularQualityEngineV3:
+    spec = AlgorithmSpec(
+        name="tabular_quality_engine_v3",
+        label="表格数据质量探测引擎（V3：四模块）",
+        description="脏数据扫描 / 分布偏差 / 对抗性 / 物理保真度，生成 JSON 摘要与 Word 报告。",
+        params_schema={
+            "type": "object",
+            "properties": {
+                "modules": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["dirty_data", "distribution", "adversarial", "physics"]},
+                    "default": ["dirty_data", "distribution", "adversarial", "physics"],
+                },
+                "train_test_split": {"type": "number", "minimum": 0.1, "maximum": 0.9, "default": 0.7},
+                "contamination": {"type": "number", "minimum": 0.0, "maximum": 0.5, "default": 0.1},
+                "p_val": {"type": "number", "minimum": 0.0001, "maximum": 0.2, "default": 0.05},
+                "adversarial": {
+                    "type": "object",
+                    "properties": {
+                        "max_iter": {"type": "integer", "minimum": 1, "default": 20},
+                        "epsilon": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.05},
+                    },
+                    "default": {},
+                },
+                "physics": {
+                    "type": "object",
+                    "properties": {
+                        "constraints": {"type": "object", "additionalProperties": True, "default": {}},
+                        "check_conservation": {"type": "boolean", "default": False},
+                    },
+                    "default": {},
+                },
+                "read_csv": {
+                    "type": "object",
+                    "properties": {
+                        "sep": {"type": ["string", "null"], "default": None},
+                        "encoding": {"type": ["string", "null"], "default": None},
+                    },
+                    "default": {},
+                },
+            },
+            "additionalProperties": True,
+        },
+    )
+
+    def run(
+        self,
+        *,
+        input_path: str,
+        output_dir: str,
+        params: dict[str, Any] | None = None,
+        emit: EmitEvent | None = None,
+    ) -> dict[str, Any]:
+        started = time.time()
+        params = params or {}
+
+        def _emit(e: dict[str, Any]) -> None:
+            if emit is not None:
+                emit(e)
+
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        output_dir = os.fspath(output_dir)
+        input_path = os.fspath(input_path)
+
+        modules = params.get("modules") or ["dirty_data", "distribution", "adversarial", "physics"]
+        modules = [m for m in modules if m in {"dirty_data", "distribution", "adversarial", "physics"}]
+        if not modules:
+            modules = ["dirty_data"]
+
+        try:
+            import numpy as np  # type: ignore
+            import pandas as pd  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "运行V3四模块需要安装 pandas/numpy（完整能力还需要 scipy/sklearn/python-docx 等）"
+            ) from e
+
+        read_csv_cfg = params.get("read_csv") or {}
+        sep = read_csv_cfg.get("sep", None)
+        encoding = read_csv_cfg.get("encoding", None)
+
+        _emit({"type": "log", "message": f"读取文件：{os.path.basename(input_path)}"})
+        df = pd.read_csv(input_path, sep=sep, engine="python" if sep is None else "c", encoding=encoding)
+        _emit({"type": "log", "message": f"数据规模：{len(df)} 行, {len(df.columns)} 列"})
+
+        from dqscan.v3.scanner import (
+            TabularAdversarialScanner,
+            TabularDirtyScanner,
+            TabularDistributionScanner,
+            TabularPhysicsScanner,
+        )
+        from dqscan.v3.reporters import DetectionReportGenerator
+
+        task_reports: dict[str, Any] = {}
+        module_results: dict[str, Any] = {}
+
+        report_generator = DetectionReportGenerator(output_dir=output_dir)
+
+        for idx, module in enumerate(modules):
+            base_progress = int((idx / max(len(modules), 1)) * 100)
+            _emit({"type": "progress", "value": max(1, base_progress)})
+            _emit({"type": "log", "message": f"开始模块：{module}"})
+
+            if module == "dirty_data":
+                contamination = float(params.get("contamination", 0.1))
+                scanner = TabularDirtyScanner(contamination=contamination)
+                res = scanner.scan(df)
+
+            elif module == "distribution":
+                p_val = float(params.get("p_val", 0.05))
+                split = float(params.get("train_test_split", 0.7))
+                split_idx = int(len(df) * split)
+                train_df = df.iloc[:split_idx].copy()
+                test_df = df.iloc[split_idx:].copy()
+                scanner = TabularDistributionScanner(p_val=p_val)
+                res = scanner.scan(train_df, test_df)
+
+            elif module == "adversarial":
+                try:
+                    from sklearn.ensemble import RandomForestClassifier  # type: ignore
+                except Exception as e:
+                    res = {
+                        "error": f"scikit-learn未安装，无法执行对抗性检测：{e}",
+                        "has_issues": False,
+                        "attack_success_rate": 0.0,
+                        "robustness_score": 1.0,
+                        "total_issues": 0,
+                        "issue_percentage": 0.0,
+                    }
+                else:
+                    numeric_df = df.select_dtypes(include=[np.number])
+                    if numeric_df.empty:
+                        res = {
+                            "error": "未找到数值列",
+                            "has_issues": False,
+                            "attack_success_rate": 0.0,
+                            "robustness_score": 1.0,
+                            "total_issues": 0,
+                            "issue_percentage": 0.0,
+                        }
+                    else:
+                        X = numeric_df.values.astype(np.float32)
+                        y = (X[:, 0] > np.median(X[:, 0])).astype(int)
+                        _emit({"type": "log", "message": "训练演示模型：RandomForestClassifier"})
+                        model = RandomForestClassifier(n_estimators=20, random_state=42)
+                        model.fit(X, y)
+                        adv_cfg = params.get("adversarial") or {}
+                        scanner = TabularAdversarialScanner(
+                            max_iter=int(adv_cfg.get("max_iter", 20)),
+                            epsilon=float(adv_cfg.get("epsilon", 0.05)),
+                        )
+                        res = scanner.scan(model, X[:50], y[:50], model_type="sklearn", max_samples=50)
+
+            elif module == "physics":
+                phy_cfg = params.get("physics") or {}
+                constraints: dict[str, dict[str, Any]] = {}
+                user_constraints = phy_cfg.get("constraints") or {}
+                if isinstance(user_constraints, dict):
+                    for k, v in user_constraints.items():
+                        if isinstance(v, dict):
+                            constraints[str(k)] = {**v}
+
+                for col in df.select_dtypes(include=[np.number]).columns:
+                    col_lower = str(col).lower()
+                    if col in constraints:
+                        continue
+                    if "age" in col_lower:
+                        constraints[str(col)] = {"min": 0, "max": 120}
+                    elif "price" in col_lower or "amount" in col_lower:
+                        constraints[str(col)] = {"min": 0}
+                    elif "temperature" in col_lower or "temp" in col_lower:
+                        constraints[str(col)] = {"min": -273.15, "max": 1000}
+                    elif "rate" in col_lower or "ratio" in col_lower:
+                        constraints[str(col)] = {"min": 0, "max": 1}
+
+                scanner = TabularPhysicsScanner(
+                    constraints=constraints,
+                    check_conservation=bool(phy_cfg.get("check_conservation", False)),
+                )
+                res = scanner.scan(df)
+
+            else:
+                res = {"error": f"未知模块: {module}"}
+
+            module_results[module] = res
+
+            report_name = f"{module}_report_tabular"
+            report_paths_abs = report_generator.generate_full_report(
+                {"tabular": res}, report_name=report_name, generate_docx=True
+            )
+            report_paths: dict[str, Any] = {}
+            for k, v in report_paths_abs.items():
+                if k.endswith("_error"):
+                    report_paths[k] = v
+                    continue
+                try:
+                    report_paths[k] = os.path.relpath(str(v), output_dir)
+                except Exception:
+                    report_paths[k] = str(v)
+
+            task_reports[module] = {"report_name": report_name, "paths": report_paths}
+
+            _emit({"type": "log", "message": f"完成模块：{module}"})
+
+        result = {
+            "summary": {
+                "status": "SUCCESS",
+                "data_type": "tabular",
+                "modules": modules,
+                "elapsed_seconds": round(time.time() - started, 3),
+            },
+            "modules": module_results,
+            "reports": task_reports,
+        }
+
+        result_jsonable = report_generator.convert_numpy_types(result)
+        Path(output_dir, "result.json").write_text(
+            json.dumps(result_jsonable, ensure_ascii=False, indent=2),
+            "utf-8",
+        )
+        _emit({"type": "progress", "value": 100})
+        _emit({"type": "done", "message": "扫描完成"})
+        return result_jsonable

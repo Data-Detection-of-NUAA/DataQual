@@ -10,6 +10,11 @@ websockets==14.2                        # websocket 框架
 httpx==0.28.1                           # HTTP 客户端
 croniter==6.0.0                         # 实现cron表达式验证和解析执行计划
 pandas==2.2.2                           # 数据处理
+scipy==1.14.1                           # 统计/科学计算（dqscan 分布偏差检测）
+scikit-learn==1.5.2                     # 机器学习（dqscan 对抗性检测演示模型）
+pyod==2.0.2                             # 异常检测（dqscan 脏数据扫描，支持ECOD；未安装会降级）
+python-docx==1.1.2                      # Word报告导出（dqscan 报告）
+pandera==0.21.1                         # 数据约束校验（dqscan 物理保真度；未安装会降级）
 openpyxl==3.1.5                         # Excel
 SQLAlchemy==2.0.45                      # 数据库ORM
 pillow==11.0.0                          # 图片处理
