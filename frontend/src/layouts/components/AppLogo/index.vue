@@ -2,10 +2,7 @@
   <div class="logo">
     <transition enter-active-class="animate__animated animate__fadeInLeft">
       <router-link :key="+collapse" class="wh-full flex-center" to="/">
-        <img :src="configStore.configData.sys_web_logo.config_value" class="w50px h50px" />
-        <span v-if="!collapse" class="title">
-          {{ configStore.configData.sys_web_title.config_value }}
-        </span>
+        <span v-if="!collapse" class="title">数据集质量测评系统</span>
       </router-link>
     </transition>
   </div>
@@ -25,19 +22,30 @@ defineProps({
 
 <style lang="scss" scoped>
 .logo {
-  width: 100%;
-  height: $navbar-height;
-  background-color: $sidebar-logo-background;
+  width: auto;
+  height: calc(#{$navbar-height} + 12px);
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  :deep(.wh-full) {
+    width: auto;
+    height: 100%;
+    justify-content: center;
+  }
 
   .title {
-    max-width: 100px;
-    margin-left: 10px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 14px;
+    max-width: 320px;
+    margin-left: 0;
+    font-size: 20px;
     font-weight: bold;
     color: $sidebar-logo-text-color;
+    line-height: 1;
+    text-align: left;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 </style>

@@ -11,7 +11,8 @@
       <div class="i-svg:backtop w-6 h-6" />
     </el-backtop>
 
-    <!-- 新增：悬浮的系统设置按钮 -->
+    <!-- 悬浮的系统设置按钮（开发者配置工具已按需求注释） -->
+    <!--
     <el-button
       v-if="settingStore.showSettings"
       class="floating-settings-button"
@@ -22,22 +23,23 @@
         <Setting />
       </el-icon>
     </el-button>
+    -->
   </div>
 </template>
 
 <script setup lang="ts">
 import { useLayout } from "../composables/useLayout";
 import { useLayoutResponsive } from "../composables/useLayoutResponsive";
-import { useSettingsStore } from "@/store";
+// import { useSettingsStore } from "@/store";
 
-const settingStore = useSettingsStore();
+// const settingStore = useSettingsStore();
 
 /**
  * 打开系统设置页面
  */
-function handleSettingsClick() {
-  settingStore.settingsVisible = true;
-}
+// function handleSettingsClick() {
+//   settingStore.settingsVisible = true;
+// }
 
 // 布局相关
 const { layoutClass, isSidebarOpen, closeSidebar } = useLayout();

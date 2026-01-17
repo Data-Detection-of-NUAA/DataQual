@@ -2,6 +2,14 @@
   <div ref="navbar-actions" :class="['navbar-actions', navbarActionsClass]">
     <!-- 桌面端工具项 -->
     <template v-if="isDesktop">
+      <!-- 显卡状态 -->
+      <div class="navbar-actions__item navbar-actions__gpu">
+        <div class="gpu-pill">
+          <span class="gpu-dot"></span>
+          <span class="gpu-text">昇腾910B 在线</span>
+        </div>
+      </div>
+
       <!-- 搜索 -->
       <div v-if="settingStore.showMenuSearch" class="navbar-actions__item">
         <MenuSearch />
@@ -28,7 +36,8 @@
       <Notification />
     </div>
 
-    <!-- 用户菜单,不管桌面还是移动端都显示 -->
+    <!-- 用户菜单已移至侧栏底部 -->
+    <!--
     <div class="navbar-actions__item">
       <el-dropdown trigger="click">
         <div class="user-profile">
@@ -48,10 +57,6 @@
             <el-dropdown-item @click="handleProfileClick">
               <el-icon><User /></el-icon>
               {{ t("navbar.profile") }}
-            </el-dropdown-item>
-            <el-dropdown-item @click="handleConfigClick">
-              <el-icon><Setting /></el-icon>
-              {{ t("navbar.config") }}
             </el-dropdown-item>
             <el-dropdown-item @click="handleDocumentClick">
               <el-icon><Document /></el-icon>
@@ -77,29 +82,16 @@
         </template>
       </el-dropdown>
     </div>
+    -->
   </div>
 
-  <!-- 引导 -->
-  <Guide v-if="guideVisible" v-model="guideVisible" @skip="handleGuideExit" />
-
-  <!-- 锁屏弹窗 -->
-  <LockDialog v-if="dialogVisible" v-model="dialogVisible" />
-  <teleport to="body">
-    <transition name="fade-bottom" mode="out-in">
-      <LockPage v-if="getIsLock" />
-    </transition>
-  </teleport>
-
-  <!-- 配置中心抽屉 -->
-  <ConfigInfoDrawer v-model="drawerVisible" />
+  <!-- 配置中心抽屉（已按需求注释） -->
+  <!-- <ConfigInfoDrawer v-model="drawerVisible" /> -->
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
-
 import { DeviceEnum } from "@/enums/settings/device.enum";
-import { useAppStore, useSettingsStore, useUserStore, useLockStore } from "@/store";
+import { useAppStore, useSettingsStore } from "@/store";
 import { SidebarColor, ThemeMode } from "@/enums/settings/theme.enum";
 import { LayoutMode } from "@/enums";
 
@@ -109,95 +101,13 @@ import Fullscreen from "@/components/Fullscreen/index.vue";
 import SizeSelect from "@/components/SizeSelect/index.vue";
 import LangSelect from "@/components/LangSelect/index.vue";
 import Notification from "@/components/Notification/index.vue";
-import LockDialog from "./LockDialog.vue";
-import LockPage from "./LockPage.vue";
-import Guide from "@/components/Guide/index.vue";
-import ConfigInfoDrawer from "@/views/module_system/param/components/ConfigInfoDrawer.vue";
+// import ConfigInfoDrawer from "@/views/module_system/param/components/ConfigInfoDrawer.vue";
 
-const { t } = useI18n();
 const appStore = useAppStore();
 const settingStore = useSettingsStore();
-const userStore = useUserStore();
-
-const router = useRouter();
 
 // 是否为桌面设备
 const isDesktop = computed(() => appStore.device === DeviceEnum.DESKTOP);
-
-/**
- * 打开个人中心页面
- */
-function handleProfileClick() {
-  router.push({ name: "Profile" });
-}
-
-const drawerVisible = ref(false);
-/**
- * 打开配置中心页面
- */
-function handleConfigClick() {
-  drawerVisible.value = true;
-}
-
-/**
- * 项目文档
- */
-function handleDocumentClick() {
-  window.open("https://service.fastapiadmin.com", "_blank");
-}
-
-/**
- * Gitee 项目地址
- */
-function handleGiteeClick() {
-  window.open("https://gitee.com/tao__tao/FastapiAdmin");
-}
-
-/**
- * 项目引导
- */
-// 使用ref而不是computed，以便可以修改引导可见性
-// 使用 computed 实现双向绑定，减少 watch 的使用
-const guideVisible = computed({
-  get: () => appStore.guideVisible,
-  set: (newValue) => appStore.showGuide(newValue),
-});
-
-function handleTourClick() {
-  // 如果是移动端，直接跳转到引导页面
-  if (appStore.device === DeviceEnum.MOBILE) {
-    router.push({ name: "Guide" });
-  } else {
-    guideVisible.value = true;
-  }
-}
-
-// 引导结束（点击跳过或最后一步完成关闭）后，自动关闭下次登录的自动展示
-function handleGuideExit() {
-  // 关闭自动展示开关，确保下次登录不再自动开启
-  settingStore.updateSetting("showGuide", false);
-}
-
-// 监听引导关闭（从 true -> false），也同步关闭自动展示开关
-watch(
-  () => guideVisible.value,
-  (val, oldVal) => {
-    if (oldVal && !val) {
-      settingStore.updateSetting("showGuide", false);
-    }
-  }
-);
-
-/**
- * 锁屏
- */
-const lockStore = useLockStore();
-const getIsLock = computed(() => lockStore.getLockInfo?.isLock ?? false);
-const dialogVisible = ref<boolean>(false);
-// 锁定屏幕
-const handlelockScreen = () => {
-  dialogVisible.value = true;
-};
 
 // 根据主题和侧边栏配色方案选择样式类
 const navbarActionsClass = computed(() => {
@@ -228,22 +138,7 @@ const navbarActionsClass = computed(() => {
 /**
  * 退出登录
  */
-function logout() {
-  ElMessageBox.confirm("确定注销并退出系统吗？", "提示", {
-    confirmButtonText: "确定",
-    cancelButtonText: "取消",
-    type: "warning",
-    lockScroll: false,
-  })
-    .then(() => {
-      userStore.logout().then(() => {
-        router.push(`/login`);
-      });
-    })
-    .catch(() => {
-      ElMessageBox.close();
-    });
-}
+// 用户菜单已移至侧栏底部
 </script>
 
 <style lang="scss" scoped>
@@ -297,6 +192,42 @@ function logout() {
         color: var(--el-color-primary);
       }
     }
+  }
+
+  &__gpu {
+    min-width: auto;
+    padding: 0 10px;
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  .gpu-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #eafff3;
+    border: 1px solid #b8f2d0;
+    border-radius: 999px;
+    box-shadow: 0 4px 10px rgba(34, 197, 94, 0.12);
+  }
+
+  .gpu-dot {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+  }
+
+  .gpu-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e7f4a;
+    white-space: nowrap;
   }
 
   .user-profile {
