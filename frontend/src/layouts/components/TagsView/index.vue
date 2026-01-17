@@ -871,8 +871,8 @@ onUnmounted(() => {
 
     &.active {
       color: var(--el-color-white);
-      background-color: var(--el-color-primary);
-      border-color: var(--el-color-primary);
+      background: linear-gradient(90deg, #7c3aed 0%, #8b5cf6 100%);
+      border-color: #7c3aed;
 
       &::before {
         position: relative;

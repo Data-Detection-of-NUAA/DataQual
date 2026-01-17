@@ -32,7 +32,7 @@ export const defaultSettings: AppSettings = {
   // 语言
   language: LanguageEnum.ZH_CN,
   // 主题颜色 - 修改此值时需同步修改 src/styles/variables.scss
-  themeColor: "#4080FF",
+  themeColor: "#7C3AED",
   // 是否显示水印 (修改默认开启水印)
   showWatermark: false,
   // 水印内容
