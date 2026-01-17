@@ -34,7 +34,7 @@ export const defaultSettings: AppSettings = {
   // 主题颜色 - 修改此值时需同步修改 src/styles/variables.scss
   themeColor: "#4080FF",
   // 是否显示水印 (修改默认开启水印)
-  showWatermark: true,
+  showWatermark: false,
   // 水印内容
   watermarkContent: pkg.name,
   // 侧边栏配色方案
