@@ -106,6 +106,7 @@ class _TaskState:
     started_at: float | None = None
     ended_at: float | None = None
     error: str | None = None
+    baseline_file_id: str | None = None
     result_file_id: str | None = None
     # 每个 websocket 连接对应一个 queue：生产者（算法线程）写入事件，消费者（ws_pump）读取并发送
     ws_clients: dict[WebSocket, asyncio.Queue[dict[str, Any]]] = field(default_factory=dict)
@@ -173,7 +174,14 @@ class DQScanService:
         }
 
     @classmethod
-    async def create_task(cls, *, file_id: str, algorithm: str, params: dict[str, Any] | None) -> str:
+    async def create_task(
+        cls,
+        *,
+        file_id: str,
+        baseline_file_id: str | None,
+        algorithm: str,
+        params: dict[str, Any] | None,
+    ) -> str:
         """
         创建任务并异步执行。
 
@@ -183,11 +191,19 @@ class DQScanService:
         task_dir = (_tasks_root() / task_id).resolve()
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        state = _TaskState(task_id=task_id, status="PENDING", progress=0)
+        state = _TaskState(task_id=task_id, status="PENDING", progress=0, baseline_file_id=baseline_file_id)
         async with cls._lock:
             cls._tasks[task_id] = state
 
-        asyncio.create_task(cls._run_task(state=state, file_id=file_id, algorithm=algorithm, params=params))
+        asyncio.create_task(
+            cls._run_task(
+                state=state,
+                file_id=file_id,
+                baseline_file_id=baseline_file_id,
+                algorithm=algorithm,
+                params=params,
+            )
+        )
         return task_id
 
     @classmethod
@@ -205,6 +221,7 @@ class DQScanService:
             "started_at": state.started_at,
             "ended_at": state.ended_at,
             "error": state.error,
+            "baseline_file_id": state.baseline_file_id,
             "result_file_id": state.result_file_id,
         }
 
@@ -245,6 +262,73 @@ class DQScanService:
         return abs_path
 
     @classmethod
+    async def get_reports(
+        cls,
+        task_id: str,
+        *,
+        module: str | None = None,
+        report_type: str = "json",
+    ) -> dict[str, Any]:
+        """
+        读取并返回任务的报告 JSON（给前端页面展示用）。
+
+        - report_type="json"：读取 `reports/*_report_*.json`（包含 scoring + compact results）
+        - report_type="summary"：读取 `reports/*_summary.json`（更轻量）
+
+        返回结构：
+        - {"reports": {<module_key>: <report_json>, ...}}
+        """
+        if report_type not in {"json", "summary"}:
+            raise ValueError("invalid report_type")
+
+        task_dir = await cls.get_task_dir(task_id)
+        result_path = (task_dir / "result.json").resolve()
+        if not result_path.exists():
+            raise FileNotFoundError("result.json not found")
+
+        result_obj = json.loads(result_path.read_text("utf-8"))
+        report_index = result_obj.get("reports") if isinstance(result_obj, dict) else None
+        if not isinstance(report_index, dict):
+            return {"reports": {}}
+
+        def _pick_path(paths: dict[str, Any]) -> str | None:
+            if report_type == "summary":
+                v = paths.get("summary_report")
+            else:
+                v = paths.get("json_report")
+            return str(v) if v else None
+
+        modules = [module] if module else list(report_index.keys())
+        out: dict[str, Any] = {}
+        for m in modules:
+            if not m:
+                continue
+            entry = report_index.get(m)
+            if not isinstance(entry, dict):
+                continue
+            paths = entry.get("paths")
+            if not isinstance(paths, dict):
+                continue
+            rel = _pick_path(paths)
+            if not rel:
+                continue
+            rel = rel.lstrip("/").replace("\\", "/")
+            abs_path = (task_dir / rel).resolve()
+            if task_dir not in abs_path.parents and abs_path != task_dir:
+                raise ValueError("invalid report path")
+            if not abs_path.exists():
+                continue
+            try:
+                out[m] = json.loads(abs_path.read_text("utf-8"))
+            except Exception as e:
+                out[m] = {"error": f"report parse failed: {e}"}
+
+        if module and module not in out:
+            raise KeyError("report not found")
+
+        return {"reports": out}
+
+    @classmethod
     async def ws_connect(cls, task_id: str, websocket: WebSocket) -> _TaskState:
         """
         建立 WebSocket 连接并发送 snapshot（当前状态快照）。
@@ -267,6 +351,7 @@ class DQScanService:
                     "status": state.status,
                     "progress": state.progress,
                     "error": state.error,
+                    "baseline_file_id": state.baseline_file_id,
                     "result_file_id": state.result_file_id,
                 },
                 ensure_ascii=False,
@@ -319,7 +404,15 @@ class DQScanService:
                 pass
 
     @classmethod
-    async def _run_task(cls, *, state: _TaskState, file_id: str, algorithm: str, params: dict[str, Any] | None):
+    async def _run_task(
+        cls,
+        *,
+        state: _TaskState,
+        file_id: str,
+        baseline_file_id: str | None,
+        algorithm: str,
+        params: dict[str, Any] | None,
+    ):
         """
         后台任务执行器。
 
@@ -369,11 +462,17 @@ class DQScanService:
 
             alg = get_algorithm(algorithm)
 
+            params_to_pass = dict(params or {})
+            if baseline_file_id:
+                baseline_path = _resolve_file_id(baseline_file_id)
+                # 仅由后端注入基线路径，避免前端随意传系统路径造成风险
+                params_to_pass["baseline_input_path"] = os.fspath(baseline_path)
+
             await asyncio.to_thread(
                 alg.run,
                 input_path=os.fspath(input_path),
                 output_dir=os.fspath(task_dir),
-                params=params or {},
+                params=params_to_pass,
                 emit=emit,
             )
 

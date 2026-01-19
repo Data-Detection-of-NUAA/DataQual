@@ -25,6 +25,7 @@
     - `GET /api/v1/application/dqscan/algorithms`：算法列表
     - `POST /api/v1/application/dqscan/upload`：上传 CSV/TXT（最大 500MB）
     - `POST /api/v1/application/dqscan/tasks`：创建任务
+      - 支持可选字段 `baseline_file_id`：用于分布偏差检测的“基线文件”（不传则在同一文件内按比例切分模拟对比）
     - `GET /api/v1/application/dqscan/tasks/{task_id}`：查询任务状态/进度
     - `GET /api/v1/application/dqscan/tasks/{task_id}/result`：获取 `result.json`
     - `GET /api/v1/application/dqscan/tasks/{task_id}/download`：下载 `result.json`
@@ -34,7 +35,8 @@
   - 从仓库根目录 `dqscan/` 引擎包加载算法并执行（线程池 `asyncio.to_thread`）
   - WebSocket 事件广播（log/progress/done/error）
 - `backend/app/plugin/module_application/dqscan/schema.py`
-  - 请求/响应 Pydantic 模型（默认算法：`tabular_quality_engine_v3`）
+  - 请求/响应 Pydantic 模型（默认算法：`tabular_quality_engine`）
+  - `baseline_file_id` 为可选字段；分布偏差模块还支持 `params.p_val` 与 `params.exclude_columns`
 - `backend/app/plugin/module_application/dqscan/ws.py`
   - WebSocket 路由（避免动态路由全局 RateLimiter 影响 WS 握手）
 
@@ -64,22 +66,20 @@
 ### 算法注册与发现
 
 - `dqscan/engine/registry.py`
-  - 注册并列出可用算法（当前仅注册 `tabular_quality_engine_v3`）
+  - 注册并列出可用算法（当前仅注册 `tabular_quality_engine`）
 
-### 表格质量探测引擎（V3：四模块）
+### 表格质量探测引擎（四模块）
 
-- `dqscan/engine/algorithms/tabular/quality_engine_v3.py`
-  - 算法名：`tabular_quality_engine_v3`
+- `dqscan/engine/algorithms/tabular/quality_engine.py`
+  - 算法名：`tabular_quality_engine`
   - 输入：CSV/TXT 文件路径
   - 输出：写入 `output_dir/result.json`（会进行 numpy 类型转换，保证 JSON 可序列化）
   - 每个模块会生成报告到 `output_dir/reports/` 并在 `result.json` 中记录相对路径（供后端 artifact 下载）
 
-### V3 复刻（扫描器 + 报告器）
+### 扫描器 + 报告器
 
-位置：`dqscan/v3/`
-
-- `dqscan/v3/scanner/*`：四大模块的表格扫描器（Tabular 版本）
-- `dqscan/v3/reporters/*`：报告生成（JSON / summary / docx）
+- `dqscan/scanner`：四大模块的表格扫描器（Tabular）
+- `dqscan/reporters`：报告生成（JSON / summary / docx）
 
 说明：
 - `distribution` 与 `adversarial` 等依赖 `scipy` / `scikit-learn` 等库；

@@ -1,0 +1,98 @@
+FastapiAdmin / codexlog3.txt
+对话总结（用于续聊/交接）
+日期：2026-01-18
+
+================================================================
+1) 用户诉求（本轮）
+----------------------------------------------------------------
+- 用户强调：要改造的不是 prompt 里的对话总结格式，而是“系统在算法扫描完之后输出的报告”。
+- 目标：
+  1) DOCX 报告风格对齐参考目录：/Users/10286062/Desktop/mydoc/project/code/output/reports/*.docx
+  2) 网页端按“报告”方式展示结果（不仅是摘要），并保留导出功能（Word/JSON 等）。
+  3) 取消所有 V3/V4 等版本号概念：不需要控制版本号，统一无版本号命名。
+
+================================================================
+2) 报告输出改造（对齐参考报告风格）
+----------------------------------------------------------------
+（1）DOCX 报告升级（封面指标卡片 + 图表 + 表格着色 + 评分说明）
+- 将 dqscan 的 Word 报告生成器升级为“参考工程同款视觉结构”的实现：
+  - 封面：标题 + 模块名 + 4 个指标卡（总分/等级/数据类型/问题数）
+  - 图表：各数据类型评分条形图；dirty_data 额外带问题率对比图
+  - 总览表：按模块类型展示关键指标列（distribution/dirty/adversarial/physics）
+  - 详情：按数据类型展示指标与问题摘要
+  - 评分说明：展示每模块评分规则表 + 评级标准表
+
+（2）图表实现策略（避免 matplotlib 依赖）
+- 参考工程使用 matplotlib 生成图片；本项目改为 Pillow 绘制基础图表（更轻量、依赖更少）。
+
+（3）报告 JSON API（用于网页“报告视图”渲染）
+- 新增后端接口：GET /api/v1/application/dqscan/tasks/{task_id}/report
+  - report_type=json：读取 reports/*_report_*.json（包含 scoring + compact results）
+  - report_type=summary：读取 reports/*_summary.json（更轻量）
+  - module 可选：只读取指定模块
+- 安全：从 result.json 的 reports 索引解析相对路径，并做 task_dir 边界校验，防 path traversal。
+
+================================================================
+3) 网页展示改造（报告视图 + 保留导出）
+----------------------------------------------------------------
+- 前端 dqscan 结果页新增“报告视图”Tab：
+  - 顶部：报告元信息 + 导出按钮（仍走 artifact 下载链路）
+  - 指标卡：总分/等级/数据类型/问题数
+  - 图表：各数据类型评分（横向柱状图）；dirty_data 显示问题率对比（分组柱状图）
+  - 总览表：按模块类型展示关键字段（p 值/漂移、异常率/缺失率/重复率、攻击成功率/鲁棒性、违规率/保真度）
+  - 详情折叠：按数据类型展示指标与问题列表（detailed_issues）
+- 仍保留原有导出：
+  - 下载 result.json
+  - 下载各模块 Word 报告（artifact）
+  - 下载各模块摘要 JSON（artifact）
+
+================================================================
+4) 去版本号化（统一无版本号命名）
+----------------------------------------------------------------
+（1）算法命名统一无版本号
+- 算法名统一为：tabular_quality_engine
+- 后端 schema 默认算法同步改为：tabular_quality_engine
+- 前端默认选择同步改为：tabular_quality_engine
+- 兼容：registry 支持 “xxx_v数字” → “xxx” 的别名映射，避免历史前端/缓存传旧值导致失败
+
+（2）报告元数据/展示去版本号
+- 报告 JSON 不再输出 report_version 字段。
+- DOCX 报告不再显示“报告版本”，改为不带版本号的来源信息。
+- 前端不再展示任何 V3/V4 字样与版本号字段。
+
+（3）目录与引用去版本号
+- 引擎入口文件改为：dqscan/engine/algorithms/tabular/quality_engine.py
+- scanner/reporters 对外统一路径：
+  - dqscan/scanner
+  - dqscan/reporters
+- 移除 dqscan/v3 目录与引用（对外不暴露版本号路径）。
+
+================================================================
+5) 验证与注意事项
+----------------------------------------------------------------
+- Python：对 dqscan 与后端 dqscan 插件执行 `python -m compileall`（通过）。
+- 本地生成 DOCX 示例并验证包含图片（通过）。
+- 前端类型检查：
+  - 由于网络限制，无法通过 corepack 拉取 pnpm；且项目里存在与本次无关的既有 vue-tsc 报错，未在本轮处理。
+
+================================================================
+6) 关键改动文件索引
+----------------------------------------------------------------
+后端（dqscan 插件）：
+- backend/app/plugin/module_application/dqscan/controller.py（新增 /report 接口）
+- backend/app/plugin/module_application/dqscan/service.py（读取 reports/*.json 的聚合逻辑）
+- backend/app/plugin/module_application/dqscan/schema.py（默认算法名改为无版本号 + 报告响应模型）
+
+引擎与报告：
+- dqscan/engine/registry.py（算法别名兼容 + 注册新入口）
+- dqscan/engine/algorithms/tabular/quality_engine.py（无版本号引擎入口）
+- dqscan/reporters/*（JSON/summary/docx + Pillow 图表）
+- dqscan/scanner/*（四模块扫描器）
+
+前端：
+- frontend/src/views/module_application/dqscan/index.vue（新增“报告视图”Tab + 去版本号展示）
+- frontend/src/api/module_application/dqscan.ts（新增 getReports）
+- frontend/src/views/dashboard/index.vue（移除版本号样式的“最新动态”标题）
+
+文档：
+- prompt/dqscan-integration.md、prompt/dqscan-code-walkthrough.md、prompt/learning-fastapi-vue-basics.md（去版本号命名与路径）

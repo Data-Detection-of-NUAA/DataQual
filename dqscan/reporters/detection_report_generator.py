@@ -3,7 +3,7 @@
 """
 检测报告生成器（JSON / Summary / DOCX）。
 
-上层引擎（quality_engine_v3）会把每个模块的结果交给本类：
+上层引擎（quality_engine）会把每个模块的结果交给本类：
 - 生成结构化 json 报告（完整/压缩结果）
 - 生成 summary 报告（给前端/快速浏览用）
 - 可选生成 docx（依赖 python-docx）
@@ -43,7 +43,7 @@ class DetectionReportGenerator(BaseReporter):
         scoring = self._calculate_score(results, module_type)
 
         report = {
-            "metadata": {"generated_at": self.now_iso(), "report_version": "v4.0", "module_type": module_type},
+            "metadata": {"generated_at": self.now_iso(), "module_type": module_type},
             "scoring": scoring,
             "results": self.convert_numpy_types(self._compact_results(results)),
         }

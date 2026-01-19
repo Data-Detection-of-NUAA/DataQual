@@ -67,6 +67,7 @@ class TabularPhysicsScanner(BaseScanner):
 
         violations: list[dict[str, Any]] = []
         total_violations = 0
+        violation_types: dict[str, int] = {}
 
         for col in numerical_columns:
             if col not in data.columns:
@@ -75,11 +76,15 @@ class TabularPhysicsScanner(BaseScanner):
             if col_violations:
                 violations.extend(col_violations)
                 total_violations += len(col_violations)
+                violation_types[str(col)] = violation_types.get(str(col), 0) + len(col_violations)
 
         cross_col_violations = self._check_cross_column_constraints(data)
         if cross_col_violations:
             violations.extend(cross_col_violations)
             total_violations += len(cross_col_violations)
+            for v in cross_col_violations:
+                key = str(v.get("column", "cross"))
+                violation_types[key] = violation_types.get(key, 0) + 1
 
         total_checks = len(data) * len(numerical_columns)
         violation_rate = total_violations / max(total_checks, 1)
@@ -91,6 +96,7 @@ class TabularPhysicsScanner(BaseScanner):
         results["total_issues"] = int(total_violations)
         results["issue_percentage"] = float(violation_rate)
         results["constraints_checked"] = list(self.constraints.keys())
+        results["violation_types"] = violation_types
 
         detailed_issues: list[dict[str, Any]] = []
         for v in violations[:50]:
@@ -177,12 +183,14 @@ class TabularPhysicsScanner(BaseScanner):
 
         violations: list[dict[str, Any]] = []
         total_violations = 0
+        violation_types: dict[str, int] = {}
         for col in numerical_columns:
             if col not in data.columns:
                 continue
             constraint = self.constraints.get(col, {})
             min_val = constraint.get("min")
             max_val = constraint.get("max")
+            col_violations = 0
             if min_val is not None:
                 mask = data[col] < min_val
                 for idx in data[mask].index[:10]:
@@ -196,6 +204,7 @@ class TabularPhysicsScanner(BaseScanner):
                         }
                     )
                 total_violations += int(mask.sum())
+                col_violations += int(mask.sum())
             if max_val is not None:
                 mask = data[col] > max_val
                 for idx in data[mask].index[:10]:
@@ -209,6 +218,9 @@ class TabularPhysicsScanner(BaseScanner):
                         }
                     )
                 total_violations += int(mask.sum())
+                col_violations += int(mask.sum())
+            if col_violations:
+                violation_types[str(col)] = violation_types.get(str(col), 0) + col_violations
 
         total_checks = len(data) * len(numerical_columns)
         violation_rate = total_violations / max(total_checks, 1)
@@ -218,6 +230,8 @@ class TabularPhysicsScanner(BaseScanner):
         results["causality_score"] = float(1.0 - min(violation_rate * 10, 1.0))
         results["total_issues"] = int(total_violations)
         results["issue_percentage"] = float(violation_rate)
+        results["constraints_checked"] = list(self.constraints.keys())
+        results["violation_types"] = violation_types
         results["detailed_issues"] = violations[:50]
         return results
 

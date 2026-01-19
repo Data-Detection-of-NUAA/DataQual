@@ -21,6 +21,7 @@ export interface DQScanAlgorithmOut {
 
 export interface DQScanCreateTaskIn {
   file_id: string;
+  baseline_file_id?: string;
   algorithm: string;
   params?: Record<string, any>;
 }
@@ -34,6 +35,7 @@ export interface DQScanTaskOut {
   started_at?: number | null;
   ended_at?: number | null;
   error?: string | null;
+  baseline_file_id?: string | null;
   result_file_id?: string | null;
 }
 
@@ -41,6 +43,17 @@ export interface DQScanResult {
   summary: Record<string, any>;
   modules?: Record<string, any>;
   reports?: Record<string, any>;
+}
+
+export interface DQScanReportPayload {
+  metadata?: Record<string, any>;
+  scoring?: Record<string, any>;
+  results?: Record<string, any>;
+  error?: string;
+}
+
+export interface DQScanReportsOut {
+  reports: Record<string, DQScanReportPayload>;
 }
 
 const DQScanAPI = {
@@ -98,6 +111,14 @@ const DQScanAPI = {
       method: "get",
       params: { path },
       responseType: "blob",
+    });
+  },
+
+  getReports(taskId: string, opts?: { module?: string; report_type?: "json" | "summary" }) {
+    return request<ApiResponse<DQScanReportsOut>>({
+      url: `${API_PATH}/tasks/${taskId}/report`,
+      method: "get",
+      params: { module: opts?.module, report_type: opts?.report_type ?? "json" },
     });
   },
 };

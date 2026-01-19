@@ -1,5 +1,5 @@
 """
-表格数据质量探测引擎（V3：四模块）。
+表格数据质量探测引擎（四模块）。
 
 这是 dqscan 的“编排层（orchestrator）”：
 - 负责读取 CSV/TXT → pandas.DataFrame
@@ -7,7 +7,7 @@
 - 统一生成报告（json/summary/docx）并写出 `result.json`
 - 通过 `emit({...})` 回调把 log/progress/done 事件推给后端任务系统
 
-真正的算法实现分别在 `dqscan/v3/scanner/*` 中。
+真正的算法实现分别在 `dqscan` 内部的 scanner/reporters 模块中。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Any
 from ...base import AlgorithmSpec, EmitEvent
 
 
-class TabularQualityEngineV3:
+class TabularQualityEngine:
     """
     引擎入口类（满足 `dqscan.engine.base.Algorithm` 协议）。
 
@@ -30,8 +30,8 @@ class TabularQualityEngineV3:
     """
 
     spec = AlgorithmSpec(
-        name="tabular_quality_engine_v3",
-        label="表格数据质量探测引擎（V3：四模块）",
+        name="tabular_quality_engine",
+        label="表格数据质量探测引擎",
         description="脏数据扫描 / 分布偏差 / 对抗性 / 物理保真度，生成 JSON 摘要与 Word 报告。",
         params_schema={
             "type": "object",
@@ -44,6 +44,12 @@ class TabularQualityEngineV3:
                 "train_test_split": {"type": "number", "minimum": 0.1, "maximum": 0.9, "default": 0.7},
                 "contamination": {"type": "number", "minimum": 0.0, "maximum": 0.5, "default": 0.1},
                 "p_val": {"type": "number", "minimum": 0.0001, "maximum": 0.2, "default": 0.05},
+                "exclude_columns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                    "description": "分布偏差检测可选：排除不参与对比的列（如 id/时间戳/高基数标识列）",
+                },
                 "adversarial": {
                     "type": "object",
                     "properties": {
@@ -119,7 +125,7 @@ class TabularQualityEngineV3:
             import pandas as pd  # type: ignore
         except ImportError as e:
             raise RuntimeError(
-                "运行V3四模块需要安装 pandas/numpy（完整能力还需要 scipy/sklearn/python-docx 等）"
+                "运行四模块需要安装 pandas/numpy（完整能力还需要 scipy/sklearn/python-docx 等）"
             ) from e
 
         # 读 CSV 参数透传：sep/encoding（sep=None 时用 python engine 以兼容更多分隔符场景）
@@ -131,13 +137,13 @@ class TabularQualityEngineV3:
         df = pd.read_csv(input_path, sep=sep, engine="python" if sep is None else "c", encoding=encoding)
         _emit({"type": "log", "message": f"数据规模：{len(df)} 行, {len(df.columns)} 列"})
 
-        from dqscan.v3.scanner import (
+        from dqscan.scanner import (
             TabularAdversarialScanner,
             TabularDirtyScanner,
             TabularDistributionScanner,
             TabularPhysicsScanner,
         )
-        from dqscan.v3.reporters import DetectionReportGenerator
+        from dqscan.reporters import DetectionReportGenerator
 
         task_reports: dict[str, Any] = {}
         module_results: dict[str, Any] = {}
@@ -159,14 +165,104 @@ class TabularQualityEngineV3:
                 res = scanner.scan(df)
 
             elif module == "distribution":
-                # 分布漂移：这里用 train/test 的切分来模拟“历史数据 vs 新数据”的漂移检测
+                # 分布漂移（两种模式）：
+                # 1) 传入基线文件（推荐）：baseline.csv vs current.csv
+                # 2) 未传基线文件（兼容旧逻辑）：在同一份文件内按 train_test_split 切两段模拟对比
                 p_val = float(params.get("p_val", 0.05))
-                split = float(params.get("train_test_split", 0.7))
-                split_idx = int(len(df) * split)
-                train_df = df.iloc[:split_idx].copy()
-                test_df = df.iloc[split_idx:].copy()
                 scanner = TabularDistributionScanner(p_val=p_val)
-                res = scanner.scan(train_df, test_df)
+
+                # 排除列：用于避免把 id/时间戳/唯一标识 等“天然会变化”的列纳入漂移检测导致误报
+                excluded: list[str] = []
+                exclude_columns_raw = params.get("exclude_columns")
+                if isinstance(exclude_columns_raw, list):
+                    for x in exclude_columns_raw:
+                        if isinstance(x, str) and x.strip():
+                            excluded.append(x.strip())
+                elif isinstance(exclude_columns_raw, str) and exclude_columns_raw.strip():
+                    excluded.append(exclude_columns_raw.strip())
+                excluded_set = set(excluded)
+                if excluded:
+                    preview = ", ".join(excluded[:10])
+                    suffix = "" if len(excluded) <= 10 else f" 等{len(excluded)}列"
+                    _emit({"type": "log", "message": f"分布检测排除列：{preview}{suffix}"})
+
+                baseline_input_path = params.get("baseline_input_path")
+                if isinstance(baseline_input_path, str) and baseline_input_path:
+                    try:
+                        _emit({"type": "log", "message": f"分布检测使用基线文件：{os.path.basename(baseline_input_path)}"})
+                        baseline_df = pd.read_csv(
+                            baseline_input_path,
+                            sep=sep,
+                            engine="python" if sep is None else "c",
+                            encoding=encoding,
+                        )
+                    except Exception as e:
+                        res = {
+                            "algorithm": "MMD + K-S Test + Chi-Square",
+                            "error": f"读取基线文件失败：{e}",
+                            "has_issues": False,
+                            "drift_detected": False,
+                            "p_value": 1.0,
+                            "total_issues": 0,
+                            "issue_percentage": 0.0,
+                            "comparison_mode": "baseline_file",
+                        }
+                    else:
+                        # 对齐列：只检测两边都有的列（避免基线/新数据列不一致导致崩溃）
+                        common_cols = [c for c in df.columns if c in baseline_df.columns]
+                        if excluded_set:
+                            common_cols = [c for c in common_cols if c not in excluded_set]
+                        dropped_current = [c for c in df.columns if c not in common_cols]
+                        dropped_baseline = [c for c in baseline_df.columns if c not in common_cols]
+                        if not common_cols:
+                            res = {
+                                "algorithm": "MMD + K-S Test + Chi-Square",
+                                "error": "基线文件与当前文件没有共同列，无法进行分布对比",
+                                "has_issues": False,
+                                "drift_detected": False,
+                                "p_value": 1.0,
+                                "total_issues": 0,
+                                "issue_percentage": 0.0,
+                                "comparison_mode": "baseline_file",
+                            }
+                        else:
+                            if dropped_current or dropped_baseline:
+                                _emit(
+                                    {
+                                        "type": "log",
+                                        "message": f"列对齐：共同列 {len(common_cols)}；忽略当前文件列 {len(dropped_current)}；忽略基线文件列 {len(dropped_baseline)}",
+                                    }
+                                )
+                            baseline_use = baseline_df[common_cols].copy()
+                            current_use = df[common_cols].copy()
+                            res = scanner.scan(baseline_use, current_use)
+                            res["comparison_mode"] = "baseline_file"
+                            res["baseline_filename"] = os.path.basename(baseline_input_path)
+                            res["current_filename"] = os.path.basename(input_path)
+                            res["excluded_columns"] = excluded
+                else:
+                    # 兼容旧逻辑：用 train/test 的切分来模拟“历史数据 vs 新数据”的漂移检测
+                    split = float(params.get("train_test_split", 0.7))
+                    df_use = df.drop(columns=excluded, errors="ignore") if excluded else df
+                    if len(df_use.columns) == 0:
+                        res = {
+                            "algorithm": "MMD + K-S Test + Chi-Square",
+                            "error": "分布检测：排除列后没有剩余列可检测",
+                            "has_issues": False,
+                            "drift_detected": False,
+                            "p_value": 1.0,
+                            "total_issues": 0,
+                            "issue_percentage": 0.0,
+                            "comparison_mode": "in_file_split",
+                            "excluded_columns": excluded,
+                        }
+                    else:
+                        split_idx = int(len(df_use) * split)
+                        train_df = df_use.iloc[:split_idx].copy()
+                        test_df = df_use.iloc[split_idx:].copy()
+                        res = scanner.scan(train_df, test_df)
+                        res["comparison_mode"] = "in_file_split"
+                        res["excluded_columns"] = excluded
 
             elif module == "adversarial":
                 # 对抗性：需要一个分类模型。本实现使用数值列训练“演示模型”，仅用于展示流程。

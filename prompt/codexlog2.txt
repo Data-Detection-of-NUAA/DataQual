@@ -1,0 +1,59 @@
+FastapiAdmin + dqscan 会话总结（用于续聊/交接）
+日期：2026-01-18
+
+【0】TL;DR（本轮新增/更新）
+- 补齐 dqscan “读代码路线”与学习手册类文档，便于从零理解项目与引擎。
+- 关键模块补充 docstring/注释，提高可读性（后端适配层 + 引擎/扫描器/报告器）。
+- distribution 漂移检测新增“两文件对比”模式：baseline_file_id（可选）vs 当前文件。
+- distribution 参数 UI 增强：p_val（敏感度）+ exclude_columns（排除列）并打通到引擎处理。
+- 待办仍聚焦：DOCX 报告美化（参考报告风格）+ 前端结果页更细粒度展示（同时保留下载）。
+
+【1】用户诉求与偏好
+- 目标：梳理 dqscan 文件树与模块职责，并从零理解 FastAPI/Vue3/TS 与任务/WS机制。
+- 偏好：代码需更易读（更多注释与配套文档）。
+- 约束：当前环境网络受限，外部学习站点仅能按章节目录做“项目相关部分”的学习映射。
+
+【2】本轮交付（Docs / Code / Feature）
+Docs（新增/更新）：
+- prompt/dqscan-integration.md：dqscan 集成说明（接口/WS/落盘/前端/API/依赖），补充 baseline_file_id/p_val/exclude_columns。
+- prompt/dqscan-code-walkthrough.md（新增）：端到端链路（上传→任务→执行→result.json→下载），含 HTTP/WS 协议、引擎接口、四模块思路、关键 Python 语法点。
+- prompt/learning-fastapi-vue-basics.md（新增）：按本项目场景的 FastAPI + Vue3 基础学习路线。
+- prompt/fastapiadmin-learning-master.md（新增）：把 README + prompt 文档整合成“按项目定制”的学习手册与开发模板。
+
+Code（可读性增强）：
+- 后端 dqscan 适配层：backend/app/plugin/module_application/dqscan/service.py、backend/app/plugin/module_application/dqscan/controller.py、backend/app/plugin/module_application/dqscan/schema.py、backend/app/plugin/module_application/dqscan/ws.py
+- 引擎与扫描/报告：dqscan/engine/base.py、dqscan/engine/registry.py、dqscan/engine/algorithms/tabular/quality_engine.py、dqscan/scanner、dqscan/reporters
+
+Feature（行为变更要点）：
+- distribution 漂移检测：
+  - baseline_file_id 提供时：两文件对比（自动共同列对齐 + 支持 exclude_columns）。
+  - baseline_file_id 不提供时：in-file split（train_test_split）兼容旧逻辑（先 drop exclude_columns 再切分）。
+- 前端 dqscan 页面支持“双文件上传”（基线可选、当前必选），并在创建任务时透传 baseline_file_id。
+- 前端增加 distribution 参数卡片（仅勾选 distribution 模块时显示）：
+  - p_val：el-slider（0.001~0.2，step=0.001，带输入框）
+  - exclude_columns：el-popover + el-checkbox-group（从当前文件表头本地解析列名，自动猜分隔符）
+
+【3】关键技术说明（Distribution Drift）
+- 算法组合文件：dqscan/scanner/distribution_scanner/tabular_distribution_scanner.py
+  - MMD（RBF Kernel）+ permutation test → p-value（整体差异）
+  - KS 两样本检验（逐数值列）
+  - Chi-square 卡方检验（逐类别列）
+  - 输出：drift_detected + detailed_issues + summary
+- 引擎侧可调参数：
+  - p_val：显著性阈值（越小越严格）
+  - train_test_split：无基线时的同文件切分比例
+  - baseline_file_id：基线文件对比模式入口
+  - exclude_columns：排除列（降低误报/避开 id/时间戳等）
+
+【4】验证
+- python -m compileall：对后端 dqscan 模块与 dqscan 引擎做语法检查（通过）。
+
+【5】待办（用户最新需求）
+- DOCX 报告生成美化：对齐参考 docx 风格（封面指标卡片、表头着色、可选图表等）。
+- 前端结果页增强：展示“报告/指标/问题详情”的更丰富视图，同时保留 artifact 下载链路。
+
+【6】关键文件索引（便于回溯）
+- Docs：prompt/dqscan-integration.md、prompt/dqscan-code-walkthrough.md、prompt/learning-fastapi-vue-basics.md、prompt/fastapiadmin-learning-master.md
+- Backend：backend/app/plugin/module_application/dqscan/service.py、backend/app/plugin/module_application/dqscan/controller.py、backend/app/plugin/module_application/dqscan/schema.py、backend/app/plugin/module_application/dqscan/ws.py
+- Engine：dqscan/engine/base.py、dqscan/engine/registry.py、dqscan/engine/algorithms/tabular/quality_engine.py
+- Scanner/Reporters：dqscan/scanner、dqscan/reporters

@@ -26,6 +26,7 @@ from .schema import (
     DQScanAlgorithmOut,
     DQScanCreateTaskIn,
     DQScanCreateTaskOut,
+    DQScanReportsOut,
     DQScanResultOut,
     DQScanTaskOut,
     DQScanUploadOut,
@@ -68,6 +69,7 @@ async def upload_controller(file: UploadFile) -> JSONResponse:
 async def create_task_controller(body: DQScanCreateTaskIn) -> JSONResponse:
     task_id = await DQScanService.create_task(
         file_id=body.file_id,
+        baseline_file_id=body.baseline_file_id,
         algorithm=body.algorithm,
         params=body.params,
     )
@@ -107,3 +109,18 @@ async def download_result_controller(task_id: str) -> UploadFileResponse:
 async def download_artifact_controller(task_id: str, path: str = Query(..., description="相对任务目录路径")) -> UploadFileResponse:
     artifact = await DQScanService.resolve_task_artifact(task_id, path)
     return UploadFileResponse(file_path=str(artifact), filename=artifact.name)
+
+
+@DQScanRouter.get(
+    "/tasks/{task_id}/report",
+    summary="获取任务报告(JSON)",
+    description="读取任务目录下 reports/*.json（供前端按“报告样式”展示）。",
+    response_model=SuccessResponseOut[DQScanReportsOut],
+)
+async def get_report_controller(
+    task_id: str,
+    module: str | None = Query(default=None, description="可选：指定模块（distribution/dirty_data/adversarial/physics）"),
+    report_type: str = Query(default="json", description="json=完整报告；summary=摘要"),
+) -> JSONResponse:
+    data = await DQScanService.get_reports(task_id, module=module, report_type=report_type)
+    return SuccessResponse(data=data, msg="获取成功")

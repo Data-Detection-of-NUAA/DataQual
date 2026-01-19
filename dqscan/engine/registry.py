@@ -37,9 +37,9 @@ def _discover() -> None:
         return
     _DISCOVERED = True
 
-    from .algorithms.tabular.quality_engine_v3 import TabularQualityEngineV3
+    from .algorithms.tabular.quality_engine import TabularQualityEngine
 
-    register(TabularQualityEngineV3())
+    register(TabularQualityEngine())
 
 
 def list_algorithms() -> list[dict[str, Any]]:
@@ -59,7 +59,14 @@ def list_algorithms() -> list[dict[str, Any]]:
 def get_algorithm(name: str) -> Algorithm:
     """按算法名获取算法实例（不存在则抛 KeyError）。"""
     _discover()
-    try:
+    if name in _ALGORITHMS:
         return _ALGORITHMS[name]
-    except KeyError as e:
-        raise KeyError(f"unknown algorithm: {name}") from e
+
+    # 兼容旧的“带版本号”算法名：例如 `xxx_v3` → `xxx`
+    # 用户侧不再需要控制版本号，但历史任务/前端缓存可能仍会传旧值。
+    if "_v" in name:
+        base, suffix = name.rsplit("_v", 1)
+        if suffix.isdigit() and base in _ALGORITHMS:
+            return _ALGORITHMS[base]
+
+    raise KeyError(f"unknown algorithm: {name}")

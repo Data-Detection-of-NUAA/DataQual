@@ -41,7 +41,7 @@ except ImportError:
 
 class TabularAdversarialScanner(BaseScanner):
     """
-    表格对抗性扫描器（V3）
+    表格对抗性扫描器
 
     - 优先使用 IBM ART 的 ZOO 攻击（如已安装）
     - 否则使用随机搜索扰动的降级攻击，保证可运行与可评分

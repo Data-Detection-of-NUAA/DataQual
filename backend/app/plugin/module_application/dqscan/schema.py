@@ -42,7 +42,11 @@ class DQScanAlgorithmOut(BaseModel):
 
 class DQScanCreateTaskIn(BaseModel):
     file_id: str
-    algorithm: str = Field(default="tabular_quality_engine_v3")
+    baseline_file_id: str | None = Field(
+        default=None,
+        description="可选：基线文件标识（用于分布偏差检测；若不传则在同一文件内按 train_test_split 切分模拟对比）",
+    )
+    algorithm: str = Field(default="tabular_quality_engine")
     params: dict[str, Any] | None = None
 
 
@@ -60,6 +64,7 @@ class DQScanTaskOut(BaseModel):
     started_at: float | None = None
     ended_at: float | None = None
     error: str | None = None
+    baseline_file_id: str | None = None
     result_file_id: str | None = None
 
 
@@ -67,3 +72,18 @@ class DQScanResultOut(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
     modules: dict[str, Any] | None = None
     reports: dict[str, Any] | None = None
+
+
+class DQScanReportOut(BaseModel):
+    """dqscan 单模块报告（来自 reports/*.json）。"""
+
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    scoring: dict[str, Any] = Field(default_factory=dict)
+    results: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class DQScanReportsOut(BaseModel):
+    """多个模块的报告集合：module_key -> report payload。"""
+
+    reports: dict[str, DQScanReportOut] = Field(default_factory=dict)
