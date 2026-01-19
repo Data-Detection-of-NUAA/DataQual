@@ -131,10 +131,17 @@ def register_routers(app: FastAPI) -> None:
     from app.plugin.module_application.ai.ws import WS_AI
     # 手动注册WebSocket路由，不使用速率限制器
     app.include_router(router=WS_AI, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
+
+    from app.plugin.module_application.dqscan.ws import WS_DQSCAN
+    app.include_router(router=WS_DQSCAN, dependencies=[Depends(WebSocketRateLimiter(times=10, seconds=5))])
     # 先将动态路由注册到应用，使用速率限制器
     from app.core.discover import get_dynamic_router
     # 获取动态路由实例
     app.include_router(router=get_dynamic_router(), dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+
+    @app.get("/health", include_in_schema=False)
+    async def root_health():
+        return {"status": "ok"}
 
 def register_files(app: FastAPI) -> None:
     """

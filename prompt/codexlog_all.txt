@@ -1,0 +1,108 @@
+FastapiAdmin / codexlog_all.txt
+综合对话总结（合并：codexlog.txt / codexlog2.txt / codexlog3.txt）
+覆盖日期：2026-01-16 ～ 2026-01-18
+
+================================================================
+1) 总目标与约束（跨三份日志统一口径）
+----------------------------------------------------------------
+- 在 FastapiAdmin（FastAPI 后端 + Vue3 前端）内集成 dqscan 数据集质量探测能力。
+- 引擎可独立迁移/容器化：算法逻辑放仓库根目录 `dqscan/`，后端只做适配层与任务管理。
+- 前端流程对齐 demo：选择数据模态 → 上传文件 → 选择模块 → 运行 → 查看结果。
+- 覆盖四类检测模块：distribution / dirty_data / adversarial / physics。
+- 任务执行必须有“进度 + 实时日志”（WebSocket），结果需落盘并支持下载（result.json + 报告产物）。
+- 先支持 CSV/TXT（最大 500MB）；dqscan WS MVP 允许不鉴权。
+- 当前环境网络受限：不依赖在线检索/在线安装作为必需步骤。
+
+================================================================
+2) 最终落地架构（引擎 / 后端适配 / 前端 UI）
+----------------------------------------------------------------
+（1）算法引擎（可独立搬走）
+- 位置：`dqscan/`
+- 算法注册：`dqscan/engine/registry.py`
+- 当前算法：`tabular_quality_engine`（表格数据四模块编排）
+- 运行产物（由算法写入 output_dir）：
+  - `result.json`：任务总结果（summary + modules + reports 索引）
+  - `reports/`：每模块 json/summary/docx 等报告文件
+
+（2）后端适配层（FastAPI 插件 + 轻量任务系统）
+- 位置：`backend/app/plugin/module_application/dqscan/`
+- 目录落盘：
+  - `backend/static/dqscan/uploads/`：上传文件
+  - `backend/static/dqscan/tasks/{task_id}/`：任务目录（log.txt/result.json/reports/*）
+- API（前缀：`/api/v1/application/dqscan`）：
+  - `GET  /algorithms`：算法列表
+  - `POST /upload`：上传 CSV/TXT
+  - `POST /tasks`：创建任务并异步执行（线程跑算法）
+  - `GET  /tasks/{task_id}`：状态/进度
+  - `GET  /tasks/{task_id}/result`：读取 result.json
+  - `GET  /tasks/{task_id}/download`：下载 result.json
+  - `GET  /tasks/{task_id}/artifact?path=...`：下载任务产物
+  - `GET  /tasks/{task_id}/report`：读取 reports/*.json（用于网页“报告视图”渲染）
+- WebSocket：`/api/v1/application/dqscan/ws/{task_id}` 实时推送 log/progress/done/error。
+- 关键工程点：避免动态路由的全局 HTTP RateLimiter 影响 WS 握手，dqscan WS 采用手动注册方式。
+
+（3）前端集成（Vue3 + TS + ElementPlus）
+- 页面：`frontend/src/views/module_application/dqscan/index.vue`
+  - 5 步流程 + 运行阶段 WS 日志（轮询兜底）+ 结果页下载与报告视图
+- API：`frontend/src/api/module_application/dqscan.ts`
+
+================================================================
+3) 关键功能演进（跨三份日志合并）
+----------------------------------------------------------------
+（1）可读性与学习资料
+- 新增/整合一组 prompt 文档：集成说明、代码阅读指南、FastAPI/Vue 基础学习路线、学习手册整合版。
+- 关键模块补充 docstring/注释：后端 dqscan 适配层 + 引擎/扫描器/报告器。
+
+（2）distribution 漂移检测增强
+- 支持“两文件对比”：`baseline_file_id`（可选基线文件）vs 当前文件；未提供则保持兼容的同文件切分对比。
+- 新增分布参数 UI：
+  - `p_val`：敏感度阈值
+  - `exclude_columns`：排除列（从当前文件本地解析表头得到列名）
+
+（3）报告体系对齐参考工程 + 网页“报告视图”
+- DOCX 报告风格对齐参考目录的结构（封面指标卡、图表、总览表、详情、评分说明）。
+- 图表生成改为 Pillow 方案（轻量、无需 matplotlib），插入 DOCX。
+- 新增后端报告读取接口 `/tasks/{task_id}/report`，前端新增“报告视图”Tab：
+  - 指标卡（总分/等级/数据类型/问题数）
+  - 图表（各数据类型评分；dirty_data 的问题率对比）
+  - 总览表 + 详情折叠 + 评分规则表
+  - 同时保留导出：result.json / docx / summary.json（仍走 artifact 下载）
+
+================================================================
+4) 去版本号化（统一无版本号命名）
+----------------------------------------------------------------
+- 算法名统一为无版本号：`tabular_quality_engine`（前后端默认值同步）。
+- 兼容旧命名：registry 对“带后缀的旧算法名”做映射，避免历史调用失败。
+- 报告 JSON 去掉版本字段；DOCX/网页不展示任何版本号字样。
+- 目录对外统一：`dqscan/scanner` 与 `dqscan/reporters`（不暴露版本号路径）。
+
+================================================================
+5) 验证与已知限制
+----------------------------------------------------------------
+- Python：对 dqscan 与后端 dqscan 插件执行 `python -m compileall`（通过）。
+- DOCX：本地生成示例并验证包含图片（通过）。
+- 前端类型检查：受网络限制，corepack/pnpm 在线拉取不可用；且项目内存在与本次无关的既有 vue-tsc 报错，未在本轮处理。
+
+================================================================
+6) 关键文件索引（当前状态）
+----------------------------------------------------------------
+引擎：
+- `dqscan/engine/registry.py`
+- `dqscan/engine/algorithms/tabular/quality_engine.py`
+扫描器/报告器：
+- `dqscan/scanner/*`
+- `dqscan/reporters/*`
+后端适配层：
+- `backend/app/plugin/module_application/dqscan/controller.py`
+- `backend/app/plugin/module_application/dqscan/service.py`
+- `backend/app/plugin/module_application/dqscan/schema.py`
+- `backend/app/plugin/module_application/dqscan/ws.py`
+前端：
+- `frontend/src/views/module_application/dqscan/index.vue`
+- `frontend/src/api/module_application/dqscan.ts`
+文档：
+- `prompt/dqscan-integration.md`
+- `prompt/dqscan-code-walkthrough.md`
+- `prompt/learning-fastapi-vue-basics.md`
+- `prompt/fastapiadmin-learning-master.md`
+
