@@ -9,7 +9,7 @@
           </div>
           <div class="flex items-center gap-2">
             <el-tag :type="statusTagType" effect="plain">{{ statusText }}</el-tag>
-            <el-button icon="refresh" @click="resetAll">重置</el-button>
+            <el-button class="accent-btn" icon="refresh" @click="resetAll">重置</el-button>
           </div>
         </div>
       </template>
@@ -85,81 +85,38 @@
       <!-- Step 1: upload -->
       <el-card v-show="activeStep === 1" shadow="never" class="mt-4">
         <template #header>
-          <div class="font-bold">上传文件（CSV/TXT，最大500MB）</div>
+          <div class="font-bold">上传数据文件（CSV/TXT，最大500MB）</div>
         </template>
 
         <el-alert
           type="info"
           show-icon
           :closable="false"
-          title="分布偏差检测支持“基线文件 vs 当前文件”。"
+          title="请上传待检测的数据文件。基线文件可在下一步的【分布偏差检测】参数中上传。"
           class="mb-3"
         />
 
-        <el-card shadow="never" class="mb-3">
-          <template #header>
-            <div class="flex-x-between">
-              <div class="font-bold">基线文件（可选）</div>
-              <div class="flex items-center gap-2">
-                <el-button v-if="baselineUploadedFile" @click="clearBaseline">清除基线</el-button>
-                <el-tag type="info" effect="plain" size="small">用于分布偏差模块</el-tag>
-              </div>
-            </div>
-          </template>
+        <el-upload
+          ref="currentUploadRef"
+          drag
+          :auto-upload="false"
+          :limit="1"
+          :file-list="currentFileList"
+          accept=".csv,.txt"
+          @change="onCurrentFileChange"
+        >
+          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+          <div class="el-upload__text">将数据文件拖到此处，或 <em>点击选择</em></div>
+        </el-upload>
 
-          <el-upload
-            ref="baselineUploadRef"
-            drag
-            :auto-upload="false"
-            :limit="1"
-            :file-list="baselineFileList"
-            accept=".csv,.txt"
-            @change="onBaselineFileChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">将基线文件拖到此处，或 <em>点击选择</em></div>
-          </el-upload>
-
-          <div class="mt-3 flex items-center gap-2">
-            <el-button type="primary" :loading="baselineUploading" :disabled="!baselineSelectedFile" @click="doUploadBaseline">
-              上传基线文件
-            </el-button>
-            <el-text v-if="baselineUploadedFile" type="info">
-              已上传：{{ baselineUploadedFile.filename }}（{{ formatBytes(baselineUploadedFile.file_size) }}）
-            </el-text>
-          </div>
-        </el-card>
-
-        <el-card shadow="never">
-          <template #header>
-            <div class="flex-x-between">
-              <div class="font-bold">当前文件（必选）</div>
-              <el-tag type="success" effect="plain" size="small">扫描对象</el-tag>
-            </div>
-          </template>
-
-          <el-upload
-            ref="currentUploadRef"
-            drag
-            :auto-upload="false"
-            :limit="1"
-            :file-list="currentFileList"
-            accept=".csv,.txt"
-            @change="onCurrentFileChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">将当前文件拖到此处，或 <em>点击选择</em></div>
-          </el-upload>
-
-          <div class="mt-3 flex items-center gap-2">
-            <el-button type="primary" :loading="currentUploading" :disabled="!currentSelectedFile" @click="doUploadCurrent">
-              上传当前文件并继续
-            </el-button>
-            <el-text v-if="currentUploadedFile" type="info">
-              已上传：{{ currentUploadedFile.filename }}（{{ formatBytes(currentUploadedFile.file_size) }}）
-            </el-text>
-          </div>
-        </el-card>
+        <div class="mt-3 flex items-center gap-2">
+          <el-button type="primary" :loading="currentUploading" :disabled="!currentSelectedFile" @click="doUploadCurrent">
+            上传文件并继续
+          </el-button>
+          <el-text v-if="currentUploadedFile" type="success">
+            已上传：{{ currentUploadedFile.filename }}（{{ formatBytes(currentUploadedFile.file_size) }}）
+          </el-text>
+        </div>
       </el-card>
 
       <!-- Step 2: choose modules -->
@@ -187,24 +144,84 @@
           </div>
         </el-card>
 
-        <el-checkbox-group v-model="selectedModules" class="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <el-checkbox v-for="m in modules" :key="m.key" :label="m.key" border class="!h-auto !items-start">
-            <div class="flex flex-col">
-              <div class="font-bold">{{ m.title }}</div>
-              <div class="text-sm text-gray mt-1">{{ m.desc }}</div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div
+            v-for="m in modules"
+            :key="m.key"
+            class="module-card"
+            :class="{ active: selectedModules.includes(m.key) }"
+            @click="toggleModule(m.key)"
+          >
+            <div class="flex items-start justify-between mb-2">
+              <el-icon :size="20" :color="selectedModules.includes(m.key) ? '#a78bfa' : '#909399'">
+                <component :is="getModuleIcon(m.key)" />
+              </el-icon>
+              <el-checkbox
+                :model-value="selectedModules.includes(m.key)"
+                @click.stop
+                @change="toggleModule(m.key)"
+              />
             </div>
-          </el-checkbox>
-        </el-checkbox-group>
+            <div class="font-bold text-sm mb-1">{{ m.title }}</div>
+            <div class="text-xs text-gray">{{ m.desc }}</div>
+          </div>
+        </div>
 
         <el-card v-if="selectedModules.includes('distribution')" shadow="never" class="mt-3">
           <template #header>
             <div class="flex-x-between">
-              <div class="font-bold">分布偏差参数</div>
+              <div class="font-bold">分布偏差检测</div>
               <el-tag type="info" effect="plain" size="small">仅对该模块生效</el-tag>
             </div>
           </template>
 
           <el-form label-width="150px">
+            <el-form-item label="基线文件（可选）">
+              <div class="w-full">
+                <el-alert
+                  type="info"
+                  show-icon
+                  :closable="false"
+                  title="上传基线文件可进行【基线 vs 当前】对比检测；不上传则在当前文件内切分对比。"
+                  class="mb-3"
+                />
+
+                <el-upload
+                  ref="baselineUploadRef"
+                  drag
+                  :auto-upload="false"
+                  :limit="1"
+                  :file-list="baselineFileList"
+                  accept=".csv,.txt"
+                  @change="onBaselineFileChange"
+                  class="mb-3"
+                >
+                  <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                  <div class="el-upload__text">将基线文件拖到此处，或 <em>点击选择</em></div>
+                </el-upload>
+
+                <div class="flex items-center gap-2">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="baselineUploading"
+                    :disabled="!baselineSelectedFile"
+                    @click="doUploadBaseline"
+                  >
+                    上传基线文件
+                  </el-button>
+                  <el-button class="accent-btn" v-if="baselineUploadedFile" size="small" @click="clearBaseline">
+                    清除
+                  </el-button>
+                  <el-text v-if="baselineUploadedFile" type="success">
+                    已上传：{{ baselineUploadedFile.filename }}（{{ formatBytes(baselineUploadedFile.file_size) }}）
+                  </el-text>
+                </div>
+              </div>
+            </el-form-item>
+
+            <el-divider />
+
             <el-form-item label="敏感度 p_val">
               <div class="w-full">
                 <el-slider v-model="distributionPVal" :min="0.001" :max="0.2" :step="0.001" show-input />
@@ -221,7 +238,7 @@
 
                   <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
                   <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
-                  <div v-else-if="!columnOptions.length" class="text-sm text-gray">请先选择“当前文件”以解析列名</div>
+                  <div v-else-if="!columnOptions.length" class="text-sm text-gray">请先上传数据文件以解析列名</div>
                   <el-scrollbar v-else height="220px">
                     <el-checkbox-group v-model="distributionExcludeColumns" class="flex flex-col gap-1">
                       <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
@@ -229,7 +246,9 @@
                   </el-scrollbar>
 
                   <div class="mt-2 flex justify-end gap-2">
-                    <el-button size="small" @click="distributionExcludeColumns = []">清空</el-button>
+                    <el-button class="accent-btn" size="small" @click="distributionExcludeColumns = []">
+                      清空
+                    </el-button>
                   </div>
                 </el-popover>
 
@@ -239,13 +258,125 @@
           </el-form>
         </el-card>
 
+        <el-card v-if="selectedModules.includes('dirty_data')" shadow="never" class="mt-3">
+          <template #header>
+            <div class="flex-x-between">
+              <div class="font-bold">脏数据扫描</div>
+              <el-tag type="info" effect="plain" size="small">仅对该模块生效</el-tag>
+            </div>
+          </template>
+
+          <el-form label-width="150px">
+            <!-- 此处可添加具体的脏数据扫描参数 -->
+            <el-empty description="参数配置区域，待实现" :image-size="60" />
+          </el-form>
+        </el-card>
+
+        <el-card v-if="selectedModules.includes('adversarial')" shadow="never" class="mt-3 adversarial-card">
+          <template #header>
+            <div class="flex-x-between">
+              <div class="font-bold">对抗性检测</div>
+              <el-tag type="info" effect="plain" size="small">仅对该模块生效</el-tag>
+            </div>
+          </template>
+
+          <el-form label-width="150px">
+            <el-form-item label="检测方法">
+              <el-checkbox-group v-model="adversarialMethods">
+                <el-checkbox value="mahalanobis">马氏距离检测</el-checkbox>
+                <el-checkbox value="perturbation">对抗扰动测试</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+
+            <!-- 马氏距离参数 -->
+            <template v-if="adversarialMethods.includes('mahalanobis')">
+              <el-divider content-position="left">
+                <span class="text-sm font-bold text-gray-600">马氏距离参数</span>
+              </el-divider>
+
+              <el-form-item label="异常阈值">
+                <div class="w-full">
+                  <el-slider v-model="mahalanobisThreshold" :min="1" :max="10" :step="0.1" show-input />
+                  <el-text type="info">马氏距离阈值，超过此值判定为异常，建议范围 2-5</el-text>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="数据标准化">
+                <el-switch v-model="mahalanobisNormalize" />
+                <el-text type="info" class="ml-2">是否在计算前对数据进行标准化处理</el-text>
+              </el-form-item>
+            </template>
+
+            <!-- 对抗扰动参数 -->
+            <template v-if="adversarialMethods.includes('perturbation')">
+              <el-divider content-position="left">
+                <span class="text-sm font-bold text-gray-600">对抗扰动参数</span>
+              </el-divider>
+
+              <el-form-item label="攻击算法">
+                <el-select v-model="perturbationAlgorithm" placeholder="请选择攻击算法" popper-class="adversarial-select-dropdown">
+                  <el-option label="FGSM (快速梯度符号法)" value="fgsm" />
+                  <el-option label="PGD (投影梯度下降)" value="pgd" />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="扰动幅度 Epsilon">
+                <div class="w-full">
+                  <el-slider v-model="perturbationEpsilon" :min="0.001" :max="0.15" :step="0.001" show-input />
+                  <el-text type="info">控制最大扰动强度，建议 0.03 (8/255) 左右</el-text>
+                </div>
+              </el-form-item>
+
+              <template v-if="perturbationAlgorithm === 'pgd'">
+                <el-form-item label="步长 Alpha">
+                  <div class="w-full">
+                    <el-slider v-model="perturbationAlpha" :min="0.001" :max="0.05" :step="0.001" show-input />
+                    <el-text type="info">PGD 每步的扰动大小，建议 0.008 (2/255)</el-text>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="迭代次数">
+                  <el-input-number v-model="perturbationIterations" :min="1" :max="100" :step="1" />
+                  <el-text type="info" class="ml-2">PGD 攻击的迭代次数，建议 20-40 次</el-text>
+                </el-form-item>
+
+                <el-form-item label="随机初始化">
+                  <el-switch v-model="perturbationRandomStart" />
+                  <el-text type="info" class="ml-2">是否从随机扰动开始迭代</el-text>
+                </el-form-item>
+              </template>
+            </template>
+          </el-form>
+        </el-card>
+
+        <el-card v-if="selectedModules.includes('physics')" shadow="never" class="mt-3">
+          <template #header>
+            <div class="flex-x-between">
+              <div class="font-bold">物理保真度扫描</div>
+              <el-tag type="info" effect="plain" size="small">仅对该模块生效</el-tag>
+            </div>
+          </template>
+
+          <el-form label-width="150px">
+            <!-- 此处可添加具体的物理保真度扫描参数 -->
+            <el-empty description="参数配置区域，待实现" :image-size="60" />
+          </el-form>
+        </el-card>
+
         <div class="mt-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <el-button icon="refresh" :loading="algorithmsLoading" @click="loadAlgorithms">刷新算法列表</el-button>
+            <el-button
+              class="accent-btn"
+              icon="refresh"
+              :loading="algorithmsLoading"
+              @click="loadAlgorithms"
+            >
+              刷新算法列表
+            </el-button>
             <el-text type="info">未勾选默认按全选四模块执行</el-text>
           </div>
           <div class="flex items-center gap-2">
-            <el-button @click="gotoStep(1)">上一步</el-button>
+            <el-button class="accent-btn" @click="gotoStep(1)">上一步</el-button>
             <el-button type="success" :disabled="!canStart" :loading="starting" icon="video-play" @click="startScan">
               开始检测
             </el-button>
@@ -260,7 +391,9 @@
             <div class="font-bold">检测运行 / 实时日志</div>
             <div class="flex items-center gap-2">
               <el-progress :percentage="progress" :status="progressStatus" style="width: 260px" />
-              <el-button v-if="taskId" icon="refresh" @click="refreshTask">刷新状态</el-button>
+              <el-button class="accent-btn" v-if="taskId" icon="refresh" @click="refreshTask">
+                刷新状态
+              </el-button>
             </div>
           </div>
         </template>
@@ -287,18 +420,18 @@
         </div>
 
         <div class="mt-3 flex justify-end gap-2">
-          <el-button @click="gotoStep(2)">返回选择</el-button>
+          <el-button class="accent-btn" @click="gotoStep(2)">返回选择</el-button>
           <el-button type="primary" :disabled="!resultReady" @click="gotoStep(4)">查看结果</el-button>
         </div>
       </el-card>
 
       <!-- Step 4: results -->
-      <el-card v-show="activeStep === 4" shadow="never" class="mt-4">
+      <el-card v-show="activeStep === 4" shadow="never" class="mt-4 result-view">
         <template #header>
           <div class="flex-x-between">
             <div class="font-bold">查看结果</div>
             <div class="flex items-center gap-2">
-              <el-button v-if="taskId" icon="refresh" @click="fetchResult">刷新结果</el-button>
+              <el-button class="accent-btn" v-if="taskId" icon="refresh" @click="fetchResult">刷新结果</el-button>
               <el-button v-if="taskId" type="primary" icon="download" @click="downloadResultJson">
                 下载 result.json
               </el-button>
@@ -352,6 +485,7 @@
                       </el-button>
                       <el-button
                         v-if="m.summaryPath"
+                        class="accent-btn"
                         icon="download"
                         @click="downloadArtifact(m.summaryPath, `${m.key}_summary.json`)"
                       >
@@ -391,6 +525,7 @@
                           </el-button>
                           <el-button
                             v-if="activeReportModuleMeta?.summaryPath"
+                            class="accent-btn"
                             icon="download"
                             @click="downloadArtifact(activeReportModuleMeta.summaryPath, `${activeReportModule}_summary.json`)"
                           >
@@ -416,7 +551,7 @@
                         </el-col>
                         <el-col :span="6" :xs="12" class="mb-2">
                           <el-card shadow="never" class="report-metric-card">
-                            <div class="report-metric-value text-primary">{{ activeReportDataTypeCount }}</div>
+                            <div class="report-metric-value text-accent">{{ activeReportDataTypeCount }}</div>
                             <div class="report-metric-label">数据类型</div>
                           </el-card>
                         </el-col>
@@ -564,7 +699,7 @@ defineOptions({ name: "DQScan", inheritAttrs: false });
 
 	import { saveAs } from "file-saver";
 	import type { UploadFile } from "element-plus";
-	import { UploadFilled } from "@element-plus/icons-vue";
+	import { UploadFilled, TrendCharts, Warning, Lock, DataAnalysis } from "@element-plus/icons-vue";
 	import ECharts from "@/components/ECharts/index.vue";
 	import DQScanAPI, { type DQScanAlgorithmOut, type DQScanUploadOut } from "@/api/module_application/dqscan";
 
@@ -597,7 +732,7 @@ const algorithms = ref<DQScanAlgorithmOut[]>([]);
 const selectedAlgorithm = ref<string>("tabular_quality_engine");
 
 	const modules = [
-	  { key: "distribution", title: "分布式偏差检测", desc: "基线文件 vs 当前文件" },
+	  { key: "distribution", title: "分布偏差检测", desc: "检测数据分布漂移（支持基线对比）" },
 	  { key: "dirty_data", title: "脏数据扫描", desc: "异常/缺失/重复/值域违规等" },
 	  { key: "adversarial", title: "对抗性检测", desc: "对抗扰动下模型脆弱性" },
 	  { key: "physics", title: "物理保真度扫描", desc: "基于规则/约束的物理合理性校验" },
@@ -629,6 +764,18 @@ const selectedModules = ref<string[]>(["dirty_data", "distribution", "adversaria
 	  if (n <= 3) return distributionExcludeColumns.value.join(", ");
 	  return `${distributionExcludeColumns.value.slice(0, 3).join(", ")} 等${n}项`;
 	});
+
+	// 对抗性检测模块参数（UI 侧）
+	const adversarialMethods = ref<string[]>(["mahalanobis"]);
+	// 马氏距离参数
+	const mahalanobisThreshold = ref(3.0);
+	const mahalanobisNormalize = ref(true);
+	// 对抗扰动参数
+	const perturbationAlgorithm = ref<string>("fgsm");
+	const perturbationEpsilon = ref(0.031); // 8/255 ≈ 0.031
+	const perturbationAlpha = ref(0.008); // 2/255 ≈ 0.008
+	const perturbationIterations = ref(40);
+	const perturbationRandomStart = ref(true);
 
 	let ws: WebSocket | null = null;
 	let pollTimer: number | null = null;
@@ -727,6 +874,14 @@ function clearPoll() {
 	  columnOptions.value = [];
 	  columnsLoading.value = false;
 	  columnsError.value = null;
+	  adversarialMethods.value = ["mahalanobis"];
+	  mahalanobisThreshold.value = 3.0;
+	  mahalanobisNormalize.value = true;
+	  perturbationAlgorithm.value = "fgsm";
+	  perturbationEpsilon.value = 0.031;
+	  perturbationAlpha.value = 0.008;
+	  perturbationIterations.value = 40;
+	  perturbationRandomStart.value = true;
 	  starting.value = false;
 	  taskId.value = null;
 	  progress.value = 0;
@@ -997,6 +1152,22 @@ async function refreshTask() {
 	        params.exclude_columns = distributionExcludeColumns.value;
 	      }
 	    }
+	    if (selectedModules.value.includes("adversarial")) {
+	      params.adversarial_methods = adversarialMethods.value;
+	      if (adversarialMethods.value.includes("mahalanobis")) {
+	        params.mahalanobis_threshold = mahalanobisThreshold.value;
+	        params.mahalanobis_normalize = mahalanobisNormalize.value;
+	      }
+	      if (adversarialMethods.value.includes("perturbation")) {
+	        params.perturbation_algorithm = perturbationAlgorithm.value;
+	        params.perturbation_epsilon = perturbationEpsilon.value;
+	        if (perturbationAlgorithm.value === "pgd") {
+	          params.perturbation_alpha = perturbationAlpha.value;
+	          params.perturbation_iterations = perturbationIterations.value;
+	          params.perturbation_random_start = perturbationRandomStart.value;
+	        }
+	      }
+	    }
 	    const res = await DQScanAPI.createTask({
 	      file_id: currentUploadedFile.value.file_id,
 	      baseline_file_id: baselineUploadedFile.value?.file_id,
@@ -1041,6 +1212,25 @@ async function downloadArtifact(path: string, filename: string) {
 
 function moduleTitle(key: string) {
   return modules.find((m) => m.key === key)?.title || key;
+}
+
+function toggleModule(key: string) {
+  const index = selectedModules.value.indexOf(key);
+  if (index > -1) {
+    selectedModules.value.splice(index, 1);
+  } else {
+    selectedModules.value.push(key);
+  }
+}
+
+function getModuleIcon(key: string) {
+  const iconMap: Record<string, any> = {
+    distribution: TrendCharts,
+    dirty_data: Warning,
+    adversarial: Lock,
+    physics: DataAnalysis,
+  };
+  return iconMap[key] || DataAnalysis;
 }
 
 	const resultModules = computed(() => {
@@ -1385,6 +1575,138 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+/* 覆盖 Element Plus 主题色为浅紫色 */
+:deep(.el-button--primary) {
+  --el-button-bg-color: #a78bfa;
+  --el-button-border-color: #a78bfa;
+  --el-button-hover-bg-color: #8b5cf6;
+  --el-button-hover-border-color: #8b5cf6;
+  --el-button-active-bg-color: #7c3aed;
+  --el-button-active-border-color: #7c3aed;
+  --el-button-disabled-bg-color: rgba(167, 139, 250, 0.5);
+  --el-button-disabled-border-color: rgba(167, 139, 250, 0.5);
+}
+
+:deep(.el-button--success) {
+  background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+  border-color: #a78bfa;
+}
+
+:deep(.el-button--success:hover) {
+  background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+  border-color: #8b5cf6;
+}
+
+:deep(.el-button--success.is-disabled) {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.5) 0%, rgba(167, 139, 250, 0.5) 100%);
+  border-color: rgba(167, 139, 250, 0.5);
+}
+
+:deep(.el-progress__text) {
+  color: #a78bfa !important;
+}
+
+:deep(.el-progress-bar__inner) {
+  background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%) !important;
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #a78bfa;
+  border-color: #a78bfa;
+}
+
+:deep(.el-checkbox__input.is-checked + .el-checkbox__label) {
+  color: #a78bfa;
+}
+
+:deep(.el-checkbox__input.is-indeterminate .el-checkbox__inner) {
+  background-color: #a78bfa;
+  border-color: #a78bfa;
+}
+
+:deep(.el-checkbox__input.is-focus .el-checkbox__inner) {
+  border-color: #a78bfa;
+}
+
+:deep(.el-tag--primary) {
+  --el-tag-bg-color: rgba(167, 139, 250, 0.1);
+  --el-tag-border-color: rgba(167, 139, 250, 0.2);
+  --el-tag-text-color: #a78bfa;
+}
+
+:deep(.el-link--primary) {
+  --el-link-text-color: #a78bfa;
+  --el-link-hover-text-color: #8b5cf6;
+}
+
+:deep(.el-slider__button) {
+  border-color: #a78bfa;
+}
+
+:deep(.el-input-number__increase:hover),
+:deep(.el-input-number__decrease:hover) {
+  color: #7c3aed;
+}
+
+:deep(.el-input-number__increase:hover ~ .el-input__wrapper),
+:deep(.el-input-number__decrease:hover ~ .el-input__wrapper),
+:deep(.el-input-number__increase:focus),
+:deep(.el-input-number__decrease:focus) {
+  border-color: #7c3aed;
+}
+
+:deep(.el-slider__bar) {
+  background-color: #a78bfa;
+}
+
+:deep(.el-input__inner:focus) {
+  border-color: #a78bfa;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #a78bfa inset;
+}
+
+:deep(.el-select .el-input.is-focus .el-input__inner) {
+  border-color: #a78bfa;
+}
+
+:deep(.el-tabs__item.is-active) {
+  color: #7c3aed;
+}
+
+:deep(.el-tabs__active-bar) {
+  background-color: #7c3aed;
+}
+
+:deep(.el-tabs__item:hover) {
+  color: #a78bfa;
+}
+
+.result-view {
+  :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item:hover) {
+    color: #a78bfa;
+    background-color: rgba(167, 139, 250, 0.12);
+  }
+
+  :deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active) {
+    color: #7c3aed;
+    background-color: rgba(124, 58, 237, 0.12);
+  }
+}
+
+:deep(.el-upload-dragger:hover) {
+  border-color: #a78bfa;
+}
+
+:deep(.el-upload__text) {
+  em {
+    color: #7c3aed;
+    font-style: normal;
+    font-weight: 600;
+  }
+}
+
 .step-bar {
   display: flex;
   overflow: hidden;
@@ -1419,21 +1741,21 @@ onBeforeUnmount(() => {
 
 .step-arrow.active {
   color: #fff;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
 }
 
 .step-arrow.active::after {
-  border-left-color: #6366f1;
+  border-left-color: #8b5cf6;
 }
 
 .step-arrow.completed {
   color: #fff;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
   opacity: 0.9;
 }
 
 .step-arrow.completed::after {
-  border-left-color: #6366f1;
+  border-left-color: #8b5cf6;
 }
 
 .step-arrow:last-child::after {
@@ -1445,7 +1767,7 @@ onBeforeUnmount(() => {
   transition: all 0.15s ease;
 }
 .modality-card.is-active {
-  border-color: var(--el-color-primary);
+  border-color: #a78bfa;
 }
 .modality-card.is-disabled {
   cursor: not-allowed;
@@ -1477,5 +1799,156 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+.module-card {
+  padding: 16px;
+  border: 2px solid var(--el-border-color-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: var(--el-bg-color);
+  height: 100%;
+  min-height: 110px;
+}
+
+.module-card:hover {
+  border-color: #7c3aed;
+  box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
+  transform: translateY(-2px);
+}
+
+.module-card.active {
+  border-color: #a78bfa;
+  background-color: rgba(167, 139, 250, 0.05);
+  box-shadow: 0 2px 12px rgba(167, 139, 250, 0.25);
+}
+
+.module-card.active:hover {
+  border-color: #a78bfa;
+  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.35);
+}
+
+.accent-btn:hover {
+  color: #7c3aed;
+  border-color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.08);
+}
+
+.text-accent {
+  color: #7c3aed;
+}
+
+/* 对抗性检测卡片专用紫色样式 */
+.adversarial-card {
+  :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+    background-color: #a78bfa;
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-checkbox__input.is-indeterminate .el-checkbox__inner) {
+    background-color: #a78bfa;
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-checkbox__input.is-focus .el-checkbox__inner) {
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-checkbox__inner:hover) {
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-slider__button) {
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-slider__bar) {
+    background-color: #a78bfa;
+  }
+
+  :deep(.el-switch.is-checked .el-switch__core) {
+    background-color: #a78bfa;
+    border-color: #a78bfa;
+  }
+
+  :deep(.el-input-number__increase:hover),
+  :deep(.el-input-number__decrease:hover) {
+    color: #a78bfa;
+  }
+
+  :deep(.el-input-number__increase:active),
+  :deep(.el-input-number__decrease:active) {
+    color: #7c3aed;
+  }
+
+  :deep(.el-input-number:hover .el-input__wrapper) {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+
+  :deep(.el-input-number.is-controls-right .el-input__wrapper:focus-within),
+  :deep(.el-input-number .el-input__wrapper:focus-within),
+  :deep(.el-input-number.is-focus .el-input__wrapper),
+  :deep(.el-input-number:focus-within .el-input__wrapper) {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+
+  :deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+
+  /* el-select 新版使用 el-select__wrapper */
+  :deep(.el-select__wrapper) {
+    &.is-focused {
+      box-shadow: 0 0 0 1px #a78bfa inset !important;
+    }
+    &:hover {
+      box-shadow: 0 0 0 1px #a78bfa inset !important;
+    }
+  }
+
+  :deep(.el-select .el-select__wrapper.is-focused) {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+
+  :deep(.el-select.is-focused .el-select__wrapper) {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+}
+
+.text-gray-600 {
+  color: #6b7280;
+}
+</style>
+
+<style lang="scss">
+/* 对抗性检测下拉框选项紫色（全局样式） */
+.adversarial-select-dropdown {
+  .el-select-dropdown__item.is-selected {
+    color: #a78bfa !important;
+    font-weight: 600;
+  }
+
+  .el-select-dropdown__item.is-hovering {
+    background-color: rgba(167, 139, 250, 0.1);
+  }
+}
+
+/* 对抗性检测下拉框边框紫色（全局样式） */
+.adversarial-card {
+  .el-select__wrapper.is-focused,
+  .el-select__wrapper:hover,
+  .el-select.is-focused .el-select__wrapper,
+  .el-select:focus-within .el-select__wrapper {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
+
+  .el-input-number:hover .el-input__wrapper,
+  .el-input-number.is-controls-right .el-input__wrapper:focus-within,
+  .el-input-number .el-input__wrapper:focus-within,
+  .el-input-number.is-focus .el-input__wrapper,
+  .el-input-number:focus-within .el-input__wrapper {
+    box-shadow: 0 0 0 1px #a78bfa inset !important;
+  }
 }
 </style>
