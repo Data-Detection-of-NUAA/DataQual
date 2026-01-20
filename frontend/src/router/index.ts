@@ -71,6 +71,19 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { title: "个人中心", icon: "user", hidden: true },
         component: () => import("@/views/current/profile.vue"),
       },
+      // 数据集优化相关页面
+      {
+        path: "dataset-select",
+        name: "DatasetSelect",
+        meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
+        component: () => import("@/views/dqscan/DatasetSelect.vue"),
+      },
+      {
+        path: "dqscan",
+        name: "DQScan",
+        meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
+        component: () => import("@/views/dqscan/index.vue"),
+      },
       // 应用内部打开页面
       {
         path: "internal-app/:appId",

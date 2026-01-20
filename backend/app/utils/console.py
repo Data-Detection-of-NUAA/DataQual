@@ -48,7 +48,7 @@ def console_run(host: str, port: int, reload: bool, *,
 
     result = Panel(
         renderable=final_content,
-        title="[bold purple]🚀 服务启动完成[/]",
+        title="[bold purple]服务启动完成[/]",
         border_style="green",
         padding=(1, 2)
     )

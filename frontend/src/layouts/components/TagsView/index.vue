@@ -296,7 +296,27 @@ const initAffixTags = () => {
 const addCurrentTag = () => {
   if (!route.meta?.title) return;
 
-  // 检查标签是否已存在
+  // 检查是否有相同 title 的标签（用于多路由共享同一个标签）
+  const existingTagByTitle = visitedViews.value.find((tag) => tag.title === route.meta.title);
+
+  if (existingTagByTitle) {
+    // 如果存在相同 title 的标签，更新它的路径和查询参数
+    const index = visitedViews.value.findIndex((tag) => tag.title === route.meta.title);
+    if (index !== -1) {
+      // 创建更新后的标签对象
+      const updatedTag = {
+        ...existingTagByTitle,
+        name: route.name as string,
+        path: route.path,
+        fullPath: route.fullPath,
+        query: route.query,
+      };
+      visitedViews.value[index] = updatedTag;
+    }
+    return;
+  }
+
+  // 检查标签是否已存在（相同路径）
   const existingTag = visitedViews.value.find((tag) => tag.path === route.path);
 
   if (existingTag) {

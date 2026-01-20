@@ -2,7 +2,7 @@
 
 import time
 import json
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, TYPE_CHECKING
 from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from user_agents import parse
@@ -10,9 +10,11 @@ from user_agents import parse
 from app.core.database import async_db_session
 from app.config.setting import settings
 from app.utils.ip_local_util import IpLocalUtil
-from app.api.v1.module_system.auth.schema import AuthSchema
-from app.api.v1.module_system.log.schema import OperationLogCreateSchema
-from app.api.v1.module_system.log.service import OperationLogService
+
+if TYPE_CHECKING:
+    from app.api.v1.module_system.auth.schema import AuthSchema
+    from app.api.v1.module_system.log.schema import OperationLogCreateSchema
+    from app.api.v1.module_system.log.service import OperationLogService
 
 """
 在 FastAPI 中，route_class 参数用于自定义路由的行为。
@@ -125,6 +127,10 @@ class OperationLogRoute(APIRoute):
             else:
                 async with async_db_session() as session:
                     async with session.begin():
+                        from app.api.v1.module_system.auth.schema import AuthSchema
+                        from app.api.v1.module_system.log.schema import OperationLogCreateSchema
+                        from app.api.v1.module_system.log.service import OperationLogService
+
                         auth = AuthSchema(db=session)
                         await OperationLogService.create_log_service(data=OperationLogCreateSchema(
                             type = log_type,

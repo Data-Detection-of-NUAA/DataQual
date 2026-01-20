@@ -52,17 +52,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         log.info("✅ 请求限流器初始化完成")
         
         # 导入并显示最终的启动信息面板
-        from app.common.enums import EnvironmentEnum
-        scheduler_jobs_count = len(SchedulerUtil.get_all_jobs())
-        scheduler_status = SchedulerUtil.get_job_status()
-        console_run(
-            host=settings.SERVER_HOST,
-            port=settings.SERVER_PORT,
-            reload=True if settings.ENVIRONMENT == EnvironmentEnum.DEV else False,
-            redis_ready=True,
-            scheduler_jobs=scheduler_jobs_count,
-            scheduler_status=scheduler_status,
-        )
+        # 注释掉启动面板以避免 Windows GBK 编码问题
+        # from app.common.enums import EnvironmentEnum
+        # scheduler_jobs_count = len(SchedulerUtil.get_all_jobs())
+        # scheduler_status = SchedulerUtil.get_job_status()
+        # console_run(
+        #     host=settings.SERVER_HOST,
+        #     port=settings.SERVER_PORT,
+        #     reload=True if settings.ENVIRONMENT == EnvironmentEnum.DEV else False,
+        #     redis_ready=True,
+        #     scheduler_jobs=scheduler_jobs_count,
+        #     scheduler_status=scheduler_status,
+        # )
         
     except Exception as e:
         log.error(f"❌ 应用初始化失败: {str(e)}")

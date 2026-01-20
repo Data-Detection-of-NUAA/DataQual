@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     # ******************** 验证码配置 ******************* #
     # ================================================= #
     CAPTCHA_ENABLE: bool = True                              # 是否启用验证码
-    CAPTCHA_EXPIRE_SECONDS: int = 60 * 1                     # 验证码过期时间(秒) 1分钟
+    CAPTCHA_EXPIRE_SECONDS: int = 60 * 5                     # 验证码过期时间(秒) 5分钟
     CAPTCHA_FONT_SIZE: int = 40                              # 字体大小
     CAPTCHA_FONT_PATH: str = 'static/assets/font/Arial.ttf'  # 字体路径
 
@@ -189,7 +189,7 @@ class Settings(BaseSettings):
     def ASYNC_DB_URI(self) -> str:
         """获取异步数据库连接"""
         if self.DATABASE_TYPE == "mysql":
-            return f"mysql+asyncmy://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}?charset=utf8mb4"
+            return f"mysql+aiomysql://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}?charset=utf8mb4"
         elif self.DATABASE_TYPE == "postgres":
             return f"postgresql+asyncpg://{self.DATABASE_USER}:{quote_plus(self.DATABASE_PASSWORD)}@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
         elif self.DATABASE_TYPE == "sqlite":

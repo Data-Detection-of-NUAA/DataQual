@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 from typing import Annotated
 import uvicorn
 import typer
 from fastapi import FastAPI
 from alembic import command
 from alembic.config import Config
+
+# 添加项目根目录到 Python 路径，以便导入 optimizer 模块
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from app.common.enums import EnvironmentEnum
 
@@ -97,6 +103,6 @@ def upgrade(env: Annotated[EnvironmentEnum, typer.Option("--env", help="运行�
 
 
 if __name__ == '__main__':
-    
+
     fastapiadmin_cli()
 

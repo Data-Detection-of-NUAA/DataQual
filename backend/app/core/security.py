@@ -4,10 +4,13 @@ import jwt
 from fastapi import Form, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.utils import get_authorization_scheme_param
+from typing import TYPE_CHECKING
 
 from app.core.exceptions import CustomException
 from app.config.setting import settings
-from app.api.v1.module_system.auth.schema import JWTPayloadSchema
+
+if TYPE_CHECKING:
+    from app.api.v1.module_system.auth.schema import JWTPayloadSchema
 
 
 class CustomOAuth2PasswordBearer(OAuth2PasswordBearer):
@@ -100,7 +103,7 @@ OAuth2Schema = CustomOAuth2PasswordBearer(
 )
 
 
-def create_access_token(payload: JWTPayloadSchema) -> str:
+def create_access_token(payload: "JWTPayloadSchema") -> str:
     """
     生成JWT访问令牌
 
@@ -118,7 +121,7 @@ def create_access_token(payload: JWTPayloadSchema) -> str:
     )
 
 
-def decode_access_token(token: str) -> JWTPayloadSchema:
+def decode_access_token(token: str) -> "JWTPayloadSchema":
     """
     解析JWT访问令牌
 
@@ -131,6 +134,8 @@ def decode_access_token(token: str) -> JWTPayloadSchema:
     异常:
     - CustomException: 解析失败时抛出,状态码为401。
     """
+    from app.api.v1.module_system.auth.schema import JWTPayloadSchema
+
     if not token:
         raise CustomException(msg="认证不存在,请重新登录", code=10401, status_code=401)
 

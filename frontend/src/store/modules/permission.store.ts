@@ -180,9 +180,12 @@ const transformRoutes = (routes: RouteVO[], isTopLevel: boolean = true): RouteRe
       normalizedRoute.children = transformRoutes(route.children, false);
     } else {
       // 叶子路由，使用实际组件
+      const viewPath = `../../views/${normalizedRoute.component}.vue`;
+
+      console.log(`[路由加载] 组件路径: ${normalizedRoute.component}`);
+
       normalizedRoute.component = normalizedRoute.component
-        ? modules[`../../views/${normalizedRoute.component}.vue`] ||
-          modules["../../views/error/404.vue"]
+        ? modules[viewPath] || modules["../../views/error/404.vue"]
         : modules["../../views/error/404.vue"];
     }
 

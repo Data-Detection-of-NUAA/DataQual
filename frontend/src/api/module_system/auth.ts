@@ -4,13 +4,22 @@ const API_PATH = "/system/auth";
 
 const AuthAPI = {
   login(body: LoginFormData) {
+    const formData = new FormData();
+    formData.append('username', body.username);
+    formData.append('password', body.password);
+    formData.append('captcha_key', body.captcha_key);
+    formData.append('captcha', body.captcha);
+    formData.append('remember', body.remember.toString());
+    formData.append('login_type', body.login_type);
+    formData.append('grant_type', 'password');
+
     return request<ApiResponse<LoginResult>>({
       url: `${API_PATH}/login`,
       method: "post",
       headers: {
         "Content-Type": "multipart/form-data",
       },
-      data: body,
+      data: formData,
     });
   },
 
