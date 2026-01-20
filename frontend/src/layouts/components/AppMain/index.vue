@@ -35,7 +35,7 @@ const appMainHeight = computed(() => {
 <style lang="scss" scoped>
 .app-main {
   position: relative;
-  overflow-y: auto;
+  overflow: visible;
   background-color: var(--el-bg-color-page);
 
   /* 布局切换动画优化 */

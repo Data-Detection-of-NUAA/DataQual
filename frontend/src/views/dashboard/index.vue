@@ -339,7 +339,7 @@ const welcome = "祝你开心每一天！";
 
 interface VersionItem {
   id: string;
-  title: string; // 版本标题（如：v2.4.0）
+  title: string; // 标题
   date: string; // 发布时间
   content: string; // 版本描述
   link: string; // 详情链接
@@ -352,7 +352,7 @@ const userStore = useUserStore();
 const vesionList = ref<VersionItem[]>([
   {
     id: "1",
-    title: "v3.2.1",
+    title: "最近更新",
     date: dayjs().format("YYYY-MM-DD HH:mm:ss"),
     content: "优化性能，修复若干小bug。",
     link: "https://gitee.com/tao__tao/FastapiAdmin/releases",
@@ -360,7 +360,7 @@ const vesionList = ref<VersionItem[]>([
   },
   {
     id: "2",
-    title: "v3.2.0",
+    title: "功能更新",
     date: dayjs().subtract(1, "day").format("YYYY-MM-DD HH:mm:ss"),
     content: "新增用户行为分析功能。",
     link: "https://gitee.com/tao__tao/FastapiAdmin/releases",
@@ -368,7 +368,7 @@ const vesionList = ref<VersionItem[]>([
   },
   {
     id: "3",
-    title: "v3.1.0",
+    title: "优化更新",
     date: dayjs().subtract(3, "day").format("YYYY-MM-DD HH:mm:ss"),
     content: "优化权限管理系统。",
     link: "https://gitee.com/tao__tao/FastapiAdmin/releases",

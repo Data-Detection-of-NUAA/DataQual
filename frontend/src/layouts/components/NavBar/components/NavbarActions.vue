@@ -189,7 +189,20 @@ const navbarActionsClass = computed(() => {
       background: rgba(0, 0, 0, 0.04);
 
       :deep([class^="i-svg:"]) {
-        color: var(--el-color-primary);
+        color: #7c3aed;
+      }
+    }
+
+    &:focus-within {
+      :deep([class^="i-svg:"]) {
+        color: #7c3aed;
+      }
+    }
+
+    :deep(.el-dropdown.is-active),
+    :deep(.el-tooltip.is-active) {
+      [class^="i-svg:"] {
+        color: #7c3aed;
       }
     }
   }
@@ -299,7 +312,7 @@ const navbarActionsClass = computed(() => {
       background: rgba(0, 0, 0, 0.04);
 
       :deep([class^="i-svg:"]) {
-        color: var(--el-color-primary) !important;
+        color: #7c3aed !important;
       }
     }
   }
@@ -315,7 +328,7 @@ const navbarActionsClass = computed(() => {
     color: var(--el-text-color-regular) !important;
 
     &:hover {
-      color: var(--el-color-primary) !important;
+      color: #7c3aed !important;
     }
   }
 }
