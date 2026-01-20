@@ -2,8 +2,8 @@
   <div class="layout-wrapper">
     <component :is="currentLayoutComponent" />
 
-    <!-- 设置面板 - 独立于布局组件 -->
-    <Settings v-if="isShowSettings" />
+    <!-- 设置面板 - 开发者配置工具（已按需求注释） -->
+    <!-- <Settings v-if="isShowSettings" /> -->
   </div>
 </template>
 
@@ -13,7 +13,7 @@ import { useLayout } from "./composables/useLayout";
 import LeftLayout from "./views/LeftLayout.vue";
 import TopLayout from "./views/TopLayout.vue";
 import MixLayout from "./views/MixLayout.vue";
-import Settings from "./components/Settings/index.vue";
+// import Settings from "./components/Settings/index.vue";
 import { LayoutMode } from "@/enums/settings/layout.enum";
 import { defaultSettings } from "@/settings";
 
@@ -32,8 +32,8 @@ const currentLayoutComponent = computed(() => {
   }
 });
 
-// 是否显示设置面板
-const isShowSettings = computed(() => defaultSettings.showSettings);
+// 是否显示设置面板（开发者配置工具已按需求注释）
+// const isShowSettings = computed(() => defaultSettings.showSettings);
 </script>
 
 <style lang="scss" scoped>

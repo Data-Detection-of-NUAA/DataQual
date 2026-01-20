@@ -786,8 +786,9 @@ onUnmounted(() => {
   width: 100%;
   height: $tags-view-height;
   background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  box-shadow: 0 1px 1px var(--el-box-shadow-light);
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-light);
+  box-shadow: none;
 
   .btn {
     display: flex;
@@ -796,7 +797,8 @@ onUnmounted(() => {
     width: $tags-view-height;
     height: $tags-view-height;
     cursor: pointer;
-    border: 1px solid var(--el-border-color-light);
+    border: none;
+    border-right: 1px solid var(--el-border-color-light);
 
     &:hover {
       color: var(--el-color-primary);
@@ -869,8 +871,8 @@ onUnmounted(() => {
 
     &.active {
       color: var(--el-color-white);
-      background-color: var(--el-color-primary);
-      border-color: var(--el-color-primary);
+      background: linear-gradient(90deg, #7c3aed 0%, #8b5cf6 100%);
+      border-color: #7c3aed;
 
       &::before {
         position: relative;

@@ -2,7 +2,7 @@
   $colors: (
     "primary": (
       // 默认主题色 - 修改此值时需同步修改 src/settings.ts 中的 themeColor
-      "base": #4080ff,
+      "base": #7c3aed,
     ),
     "success": (
       "base": #23c343,
@@ -92,5 +92,5 @@ $sidebar-logo-text-color: var(--sidebar-logo-text-color); // 侧边栏 Logo 文�
 
 $sidebar-width: 210px; // 侧边栏宽度
 $sidebar-width-collapsed: 54px; // 侧边栏收缩宽度
-$navbar-height: 50px; // 导航栏高度
+$navbar-height: 56px; // 导航栏高度
 $tags-view-height: 34px; // TagsView 高度

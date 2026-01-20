@@ -4,7 +4,8 @@
     <div class="auth-view__toolbar">
       <el-tooltip :content="t('login.themeToggle')" placement="bottom">
         <CommonWrapper>
-          <DarkModeSwitch />
+          <!-- 仅浅色模式（暗黑切换已按需求注释） -->
+          <!-- <DarkModeSwitch /> -->
         </CommonWrapper>
       </el-tooltip>
       <el-tooltip :content="t('login.languageToggle')" placement="bottom">
@@ -110,7 +111,7 @@
 // import logo from "@/assets/logo.png";
 // import { defaultSettings } from "@/settings";
 import CommonWrapper from "@/components/CommonWrapper/index.vue";
-import DarkModeSwitch from "@/components/DarkModeSwitch/index.vue";
+// import DarkModeSwitch from "@/components/DarkModeSwitch/index.vue";
 import { useConfigStore } from "@/store";
 
 const configStore = useConfigStore();

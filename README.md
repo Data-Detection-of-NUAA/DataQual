@@ -46,10 +46,10 @@
 
 1. **克隆项目**
    ```bash
-   git clone https://github.com/Data-Detection-of-NUAA/FastapiAdmin.git
+   git clone https://github.com/Data-Detection-of-NUAA/DataQual.git
    # 或
-   git clone git@github.com:Data-Detection-of-NUAA/FastapiAdmin.git
-   cd FastapiAdmin
+   git clone git@github.com:Data-Detection-of-NUAA/DataQual.git
+   cd DataQual
    ```
 
 2. **创建功能分支**

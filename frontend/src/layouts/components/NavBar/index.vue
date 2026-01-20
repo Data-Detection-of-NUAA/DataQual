@@ -1,10 +1,8 @@
 <template>
   <div ref="navbar" class="navbar">
-    <div class="flex-y-center">
-      <!-- 菜单折叠按钮 -->
-      <Hamburger :is-active="isSidebarOpened" @toggle-click="toggleSideBar" />
+    <div class="navbar__left">
       <!-- 面包屑导航 -->
-      <Breadcrumb />
+      <Breadcrumb class="navbar__breadcrumb" />
     </div>
     <!-- 导航栏操作区域 -->
     <div class="navbar__actions">
@@ -14,23 +12,10 @@
 </template>
 
 <script setup lang="ts">
-import { useAppStore } from "@/store";
-import Hamburger from "@/components/Hamburger/index.vue";
 import Breadcrumb from "@/components/Breadcrumb/index.vue";
 import NavbarActions from "./components/NavbarActions.vue";
 
-const appStore = useAppStore();
-
-// 侧边栏展开状态
-const isSidebarOpened = computed(() => appStore.sidebar.opened);
-
-// 切换侧边栏展开/折叠状态
-function toggleSideBar() {
-  console.log("🔄 Hamburger clicked! Current state:", isSidebarOpened.value);
-  console.log("🔄 Device type:", appStore.device);
-  appStore.toggleSidebar();
-  console.log("🔄 New state:", appStore.sidebar.opened);
-}
+// 侧栏折叠功能已按需求注释
 </script>
 
 <style lang="scss" scoped>
@@ -39,6 +24,18 @@ function toggleSideBar() {
   align-items: center;
   justify-content: space-between;
   height: $navbar-height;
+  padding: 0 16px;
+  background-color: var(--el-bg-color);
+
+  &__left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  &__breadcrumb {
+    margin-left: 12px;
+  }
 
   &__actions {
     display: flex;
