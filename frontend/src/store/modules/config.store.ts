@@ -33,14 +33,23 @@ export const useConfigStore = defineStore("config", {
 
   actions: {
     async getConfig() {
-      const response = await ParamsAPI.getInitConfig();
-      response.data.data.forEach((item: ConfigTable) => {
-        // 确保所有配置项都正确映射到 configData
-        if (item.config_value !== undefined) {
-          this.configData[item.config_key as keyof ConfigState] = item;
+      try {
+        const response = await ParamsAPI.getInitConfig();
+        // 检查响应数据是否存在且为数组
+        if (response?.data?.data && Array.isArray(response.data.data)) {
+          response.data.data.forEach((item: ConfigTable) => {
+            // 确保所有配置项都正确映射到 configData
+            if (item.config_value !== undefined) {
+              this.configData[item.config_key as keyof ConfigState] = item;
+            }
+          });
         }
-      });
-      this.isConfigLoaded = true;
+        this.isConfigLoaded = true;
+      } catch (error) {
+        console.error("获取系统配置失败:", error);
+        // 即使失败也标记为已加载，避免阻塞应用启动
+        this.isConfigLoaded = true;
+      }
     },
   },
   persist: true,

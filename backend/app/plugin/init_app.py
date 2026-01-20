@@ -131,10 +131,10 @@ def register_routers(app: FastAPI) -> None:
     from app.plugin.module_application.ai.ws import WS_AI
     # 手动注册WebSocket路由，不使用速率限制器
     app.include_router(router=WS_AI, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
-    # 先将动态路由注册到应用，使用速率限制器
+
+    # 注册动态路由 - 移除全局速率限制，让各接口自行控制
     from app.core.discover import get_dynamic_router
-    # 获取动态路由实例
-    app.include_router(router=get_dynamic_router(), dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+    app.include_router(router=get_dynamic_router())
 
 def register_files(app: FastAPI) -> None:
     """
@@ -166,7 +166,7 @@ def reset_api_docs(app: FastAPI) -> None:
     @app.get(settings.DOCS_URL, include_in_schema=False)
     async def custom_swagger_ui_html() -> HTMLResponse:
         return get_swagger_ui_html(
-            openapi_url=str(app.root_path) + str(app.openapi_url),
+            openapi_url=str(app.openapi_url),  # 修复：直接使用 openapi_url，不添加 root_path
             title=app.title + " - Swagger UI",
             oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
             swagger_js_url=settings.SWAGGER_JS_URL,
@@ -181,7 +181,7 @@ def reset_api_docs(app: FastAPI) -> None:
     @app.get(settings.REDOC_URL, include_in_schema=False)
     async def custom_redoc_html():
         return get_redoc_html(
-            openapi_url=str(app.root_path) + str(app.openapi_url),
+            openapi_url=str(app.openapi_url),  # 修复：直接使用 openapi_url
             title=app.title + " - ReDoc",
             redoc_js_url=settings.REDOC_JS_URL,
             redoc_favicon_url=settings.FAVICON_URL,

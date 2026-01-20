@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f in model.py crud.py service.py schema.py)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(python -c \"data = open\\(''$f'', ''rb''\\).read\\(\\); print\\(''Null bytes:'', data.count\\(b''\\\\x00''\\)\\)\")",
+      "Bash(done)",
+      "Bash(curl:*)",
+      "Bash(python -c:*)",
+      "Bash(git checkout:*)",
+      "Bash(python main.py:*)"
+    ]
+  }
+}

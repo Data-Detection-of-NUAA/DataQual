@@ -15,16 +15,16 @@ ALEMBIC_VERSION_DIR.mkdir(parents=True, exist_ok=True)
 
 # 清除MappedBase.metadata中的表定义，避免重复注册
 if hasattr(MappedBase, 'metadata') and MappedBase.metadata.tables:
-    print(f"🧹 清除已存在的表定义，当前有 {len(MappedBase.metadata.tables)} 个表")
+    print(f"[Clean] 清除已存在的表定义，当前有 {len(MappedBase.metadata.tables)} 个表")
     # 创建一个新的空metadata对象
     from sqlalchemy import MetaData
     MappedBase.metadata = MetaData()
-    print("✅️ 已重置metadata")
+    print("[OK] 已重置metadata")
 
 # 自动查找所有模型
-print("🔍 开始查找模型...")
+print("[Search] 开始查找模型...")
 found_models = ImportUtil.find_models(MappedBase)
-print(f"📊 找到 {len(found_models)} 个有效模型")
+print(f"[Stats] 找到 {len(found_models)} 个有效模型")
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -38,7 +38,7 @@ if alembic_config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+#target_metadata = Base.metadata
 target_metadata = MappedBase.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -105,9 +105,9 @@ def run_migrations_online() -> None:
             if all_empty:
                 # 如果没有实际变更，不生成迁移文件
                 directives[:] = []
-                print('❎️ 未检测到模型变更，不生成迁移文件')
+                print('[Skip] 未检测到模型变更，不生成迁移文件')
             else:
-                print('✅️ 检测到模型变更，生成迁移文件')
+                print('[OK] 检测到模型变更，生成迁移文件')
 
         context.configure(
             connection=connection,

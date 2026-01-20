@@ -69,10 +69,11 @@ export const generator = (routers: MenuTable[]): RouteVO[] => {
 
 export const usePermissionStore = defineStore("permission", () => {
   // 存储所有路由，包括静态路由和动态路由
-  const routes = ref<RouteRecordRaw[]>([]);
+  // 初始化时直接使用静态路由，确保菜单能显示
+  const routes = ref<RouteRecordRaw[]>([...constantRoutes]);
   // 混合模式左侧菜单路由
   const mixLayoutSideMenus = ref<RouteRecordRaw[]>([]);
-  // 路由是否加载完成
+  // 路由是否加载完成（登录后需要从后端获取菜单）
   const isRouteGenerated = ref(false);
 
   /**
@@ -165,6 +166,7 @@ const transformRoutes = (routes: RouteVO[], isTopLevel: boolean = true): RouteRe
     // 2. 二级及以上的父路由不使用Layout组件，只作为路由容器，避免Layout嵌套
     // 3. 叶子路由使用实际组件
     // 4. 递归处理子路由，实现无限层级菜单
+    // 5. 顶级叶子路由(无children的顶级菜单)也使用Layout包裹,作为单独子路由
     if (normalizedRoute.children && normalizedRoute.children.length > 0) {
       // normalizedRoute.children = transformRoutes(route.children);
 
@@ -179,11 +181,29 @@ const transformRoutes = (routes: RouteVO[], isTopLevel: boolean = true): RouteRe
       // 递归处理子路由，标记为非顶级路由
       normalizedRoute.children = transformRoutes(route.children, false);
     } else {
-      // 叶子路由，使用实际组件
-      normalizedRoute.component = normalizedRoute.component
-        ? modules[`../../views/${normalizedRoute.component}.vue`] ||
-          modules["../../views/error/404.vue"]
-        : modules["../../views/error/404.vue"];
+      // 叶子路由
+      if (isTopLevel && normalizedRoute.component) {
+        // 顶级叶子路由：将其包裹在Layout中，作为单独的子路由
+        const componentPath = normalizedRoute.component as string;
+        const childRoute = {
+          path: '',  // 子路由使用空路径,继承父路由路径
+          name: normalizedRoute.name,  // 子路由保留原name
+          component: modules[`../../views/${componentPath}.vue`] ||
+            modules["../../views/error/404.vue"],
+          meta: normalizedRoute.meta,
+        };
+
+        normalizedRoute.component = Layout;
+        normalizedRoute.children = [childRoute];
+        normalizedRoute.name = undefined;  // 父路由不设置name,避免与子路由name冲突
+        normalizedRoute.redirect = undefined;
+      } else {
+        // 非顶级叶子路由，使用实际组件
+        normalizedRoute.component = normalizedRoute.component
+          ? modules[`../../views/${normalizedRoute.component}.vue`] ||
+            modules["../../views/error/404.vue"]
+          : modules["../../views/error/404.vue"];
+      }
     }
 
     return normalizedRoute;

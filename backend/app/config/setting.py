@@ -90,8 +90,10 @@ class Settings(BaseSettings):
     DATABASE_HOST: str = 'localhost'
     DATABASE_PORT: int = 3306
     DATABASE_USER: str = 'root'
-    DATABASE_PASSWORD: str = 'ServBay.dev'
+    DATABASE_PASSWORD: str = '123456'
     DATABASE_NAME: str = 'fastapiadmin'
+
+    BASE_DIR: Path = BASE_DIR
 
     # ================================================= #
     # ******************** Redis配置 ******************* #
@@ -146,10 +148,10 @@ class Settings(BaseSettings):
     # ================================================= #
     # ***************** Swagger配置 ***************** #
     # ================================================= #
-    SWAGGER_CSS_URL: str = "static/swagger/swagger-ui/swagger-ui.css"
-    SWAGGER_JS_URL: str = "static/swagger/swagger-ui/swagger-ui-bundle.js"
-    REDOC_JS_URL: str = "static/swagger/redoc/bundles/redoc.standalone.js"
-    FAVICON_URL: str = "static/swagger/favicon.png"
+    SWAGGER_CSS_URL: str = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css"
+    SWAGGER_JS_URL: str = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"
+    REDOC_JS_URL: str = "https://cdn.jsdelivr.net/npm/redoc@2.1.3/bundles/redoc.standalone.js"
+    FAVICON_URL: str = "/static/swagger/favicon.png"
 
     # ================================================= #
     # ******************* AI大模型配置 ****************** #

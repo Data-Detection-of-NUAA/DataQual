@@ -19,11 +19,10 @@ from fastapi import APIRouter
 # 内部库导入
 from app.core.logger import log
 
-
 def get_dynamic_router() -> APIRouter:
     """
     执行动态路由发现与注册，返回包含所有动态路由的根路由实例
-    
+
     返回:
     - APIRouter: 包含所有动态路由的根路由实例
     """
@@ -92,8 +91,10 @@ def get_dynamic_router() -> APIRouter:
         for prefix, container_router in sorted(container_routers.items()):
             root_router.include_router(container_router)
             log.info(f"✅️ 注册容器: {prefix} (路由数: {len(container_router.routes)})")
-        
+
         log.info(f"✅️ 动态路由发现完成: 注册了 {len(container_routers)} 个容器路由")
+        log.info(f"📊 根路由总路由数: {len(root_router.routes)}")
+
         return root_router
         
     except Exception as e:

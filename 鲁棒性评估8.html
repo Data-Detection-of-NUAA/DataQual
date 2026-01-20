@@ -1,0 +1,3338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>多模态鲁棒性评估平台 - Vue3 Demo</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      background-color: #f8fafc;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    [v-cloak] { display: none; }
+
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+    .slide-enter-active { transition: all 0.22s ease-out; }
+    .slide-leave-active { transition: all 0.18s ease-in; }
+    .slide-enter-from, .slide-leave-to { transform: translateY(6px); opacity: 0; }
+
+    /* 动画示例：走马灯进度条 */
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(200%); }
+    }
+    .shimmer-bar::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      width:40%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+      transform: translateX(-100%);
+      animation: shimmer 1.2s linear infinite;
+    }
+
+    /* 动画示例：脉冲点 */
+    @keyframes pulseDot {
+      0%, 100% { transform: scale(1); opacity: 0.55; }
+      50% { transform: scale(1.35); opacity: 1; }
+    }
+    .pulse-dot { animation: pulseDot 0.9s ease-in-out infinite; }
+    
+    /* 新增：步骤进度条动画 */
+    .progress-bar {
+      background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
+      background-size: 200% 100%;
+      animation: gradient-shift 2s ease infinite;
+    }
+    @keyframes gradient-shift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .step-active {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+    }
+    .model-type-cell {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 100px;
+    }
+  </style>
+</head>
+
+<body class="text-gray-900 antialiased">
+<div id="app" v-cloak class="flex min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+
+  <!-- 左侧导航栏 -->
+  <aside class="w-72 border-r border-gray-200 flex flex-col fixed h-full bg-white z-30 shadow-sm">
+    <!-- Logo -->
+    <div class="p-6 border-b border-gray-100">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center text-white text-lg font-bold shadow-lg">
+          AI
+        </div>
+        <div>
+          <div class="font-bold text-xl tracking-tight text-gray-900">QualityEval</div>
+          <p class="text-xs text-gray-500">多模态鲁棒性评估平台</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 菜单 -->
+    <nav class="flex-1 overflow-y-auto p-4 no-scrollbar">
+      <div class="text-xs font-semibold text-gray-400 mb-3 px-3 uppercase tracking-wider">平台总览</div>
+      <sidebar-item icon="layout-dashboard" label="控制台" view="dashboard" :active="currentView==='dashboard'" @click="changeView('dashboard')"></sidebar-item>
+
+      <div class="mt-6 text-xs font-semibold text-gray-400 mb-3 px-3 uppercase tracking-wider">核心模块</div>
+      <sidebar-item icon="shield-alert" label="鲁棒性评估平台" view="robustness" :active="currentView==='robustness'" @click="changeView('robustness')"></sidebar-item>
+      <sidebar-item icon="database" label="数据集管理" view="datasets" :active="currentView==='datasets'" @click="changeView('datasets')" badge="规划中"></sidebar-item>
+      <sidebar-item icon="cpu" label="模型管理" view="models" :active="currentView==='models'" @click="changeView('models')" badge="规划中"></sidebar-item>
+      <sidebar-item icon="flask-conical" label="算法库" view="attacks" :active="currentView==='attacks'" @click="changeView('attacks')" badge="规划中"></sidebar-item>
+
+      <div class="mt-6 text-xs font-semibold text-gray-400 mb-3 px-3 uppercase tracking-wider">系统管理</div>
+      <sidebar-item icon="server" label="算力资源" view="resources" :active="currentView==='resources'" @click="changeView('resources')"></sidebar-item>
+      <sidebar-item icon="settings" label="系统设置" view="settings" :active="currentView==='settings'" @click="changeView('settings')"></sidebar-item>
+    </nav>
+
+    <!-- 用户 -->
+    <div class="p-4 border-t border-gray-100">
+      <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow">
+          ADM
+        </div>
+        <div class="flex-1">
+          <div class="font-medium text-sm">Admin</div>
+          <div class="text-xs text-gray-500">平台管理员</div>
+        </div>
+        <i data-lucide="log-out" class="w-4 h-4 text-gray-400"></i>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main class="flex-1 ml-72">
+    <!-- 顶部栏 -->
+    <header class="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white/90 backdrop-blur-md sticky top-0 z-20 shadow-sm">
+      <div class="flex items-center gap-4">
+        <nav class="flex items-center gap-2 text-sm">
+          <span class="text-gray-500">首页</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300"></i>
+          <span class="text-gray-900 font-medium">{{ viewTitle }}</span>
+        </nav>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <!-- 系统状态 -->
+        <div class="flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-200">
+          <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span class="text-xs font-medium text-emerald-700">Scheduler Online</span>
+        </div>
+
+        <!-- 通知 -->
+        <div class="relative">
+          <i data-lucide="bell" class="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"></i>
+          <span class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+            2
+          </span>
+        </div>
+
+        <i data-lucide="search" class="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"></i>
+      </div>
+    </header>
+
+    <div class="p-8">
+      <transition name="fade" mode="out-in">
+        <dashboard-view v-if="currentView==='dashboard'" :key="currentView"></dashboard-view>
+        <robustness-view v-else-if="currentView==='robustness'" :key="currentView"></robustness-view>
+        <placeholder-view v-else :key="currentView" :title="viewTitle"></placeholder-view>
+      </transition>
+    </div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, watch, reactive, nextTick } = Vue;
+
+/* ---------------------------
+   Mock API（替换为真实后端）
+---------------------------- */
+const mockApi = (() => {
+  const datasets = [
+    { id: "ds-img-cifar10", name: "CIFAR-10", modality: "image", task: "classification", splits: ["train","test"], stats: { samples: 10000, classes: 10, input: "32×32×3" } },
+    { id: "ds-img-imagenet-mini", name: "ImageNet-Mini", modality: "image", task: "classification", splits: ["val"], stats: { samples: 5000, classes: 100, input: "224×224×3" } },
+    { id: "ds-txt-agnews", name: "AG News", modality: "text", task: "classification", splits: ["test"], stats: { samples: 7600, classes: 4, input: "tokenized" } },
+    { id: "ds-aud-esc50-mini", name: "ESC-50-Mini", modality: "audio", task: "classification", splits: ["test"], stats: { samples: 2000, classes: 50, input: "1×T@16kHz" } },
+  ];
+
+  const models = [
+    { id: "m-resnet18-cifar10-v1", name: "ResNet-18 (CIFAR-10)", modality: "image", task: "classification", datasetId: "ds-img-cifar10", version: "v1.0.2", cleanMetric: 0.915, inputSpec: "[0,1] RGB", deviceHint: "GPU" },
+    { id: "m-resnet50-imnetmini-v2", name: "ResNet-50 (ImageNet-Mini)", modality: "image", task: "classification", datasetId: "ds-img-imagenet-mini", version: "v2.1.0", cleanMetric: 0.763, inputSpec: "mean/std norm", deviceHint: "GPU" },
+    { id: "m-bert-agnews-v3", name: "BERT-Base (AG News)", modality: "text", task: "classification", datasetId: "ds-txt-agnews", version: "v3.0.0", cleanMetric: 0.934, inputSpec: "tokenizer=bert-base", deviceHint: "GPU/CPU" },
+    { id: "m-crnn-esc50-v1", name: "CRNN (ESC-50-Mini)", modality: "audio", task: "classification", datasetId: "ds-aud-esc50-mini", version: "v1.3.1", cleanMetric: 0.801, inputSpec: "log-mel", deviceHint: "GPU" },
+  ];
+
+  const attacks = [
+    { id: "a-fgsm", name: "FGSM", modality: "image", task: "classification", modes: ["whitebox"], desc: "单步梯度符号攻击（L∞）" },
+    { id: "a-pgd", name: "PGD", modality: "image", task: "classification", modes: ["whitebox"], desc: "多步投影梯度下降（L∞/L2）" },
+    { id: "a-cw", name: "CW", modality: "image", task: "classification", modes: ["whitebox"], desc: "优化式攻击（L2）" },
+    { id: "a-square", name: "Square Attack", modality: "image", task: "classification", modes: ["blackbox"], desc: "查询式黑盒攻击（L∞）" },
+    { id: "a-textfooler", name: "TextFooler", modality: "text", task: "classification", modes: ["blackbox","whitebox"], desc: "词级替换，语义保持扰动" },
+    { id: "a-bertattack", name: "BERT-Attack", modality: "text", task: "classification", modes: ["blackbox","whitebox"], desc: "基于 MLM 的替换攻击" },
+    { id: "a-audio-pgd", name: "Audio-PGD", modality: "audio", task: "classification", modes: ["whitebox"], desc: "音频域/频谱域 PGD" },
+  ];
+
+  const schemas = {
+    "a-fgsm": {
+      title: "FGSM 参数",
+      fields: [
+        { key: "epsilon", label: "扰动预算 ε", type: "number", min: 0.0, max: 0.3, step: 0.001, default: 0.031, unit: "（归一化空间）", help: "典型值：8/255≈0.031" },
+        { key: "norm", label: "范数约束", type: "enum", options: ["linf"], default: "linf", help: "FGSM 常用 L∞" },
+        { key: "clamp", label: "输入裁剪", type: "enum", options: ["[0,1]", "[-1,1]", "none"], default: "[0,1]" },
+        { key: "targeted", label: "目标攻击", type: "boolean", default: false },
+        { key: "target_class", label: "目标类别", type: "number", min: 0, max: 999, step: 1, default: 0, visible_if: { key: "targeted", equals: true }, help: "仅目标攻击时启用" },
+        { key: "seed", label: "随机种子", type: "number", min: 0, max: 999999, step: 1, default: 42 },
+      ]
+    },
+    "a-pgd": {
+      title: "PGD 参数",
+      fields: [
+        { key: "epsilon", label: "扰动预算 ε", type: "number", min: 0.0, max: 0.3, step: 0.001, default: 0.031, unit: "（归一化空间）" },
+        { key: "norm", label: "范数约束", type: "enum", options: ["linf","l2"], default: "linf" },
+        { key: "steps", label: "迭代步数", type: "number", min: 1, max: 200, step: 1, default: 20 },
+        { key: "alpha", label: "步长 α", type: "number", min: 0.0, max: 0.1, step: 0.0005, default: 0.007, help: "常用：α≈ε/steps 或 2/255" },
+        { key: "restarts", label: "随机重启", type: "number", min: 1, max: 50, step: 1, default: 1 },
+        { key: "early_stop", label: "成功早停", type: "boolean", default: true },
+        { key: "clamp", label: "输入裁剪", type: "enum", options: ["[0,1]", "[-1,1]", "none"], default: "[0,1]" },
+        { key: "seed", label: "随机种子", type: "number", min: 0, max: 999999, step: 1, default: 42 },
+      ]
+    },
+    "a-square": {
+      title: "Square Attack 参数",
+      fields: [
+        { key: "epsilon", label: "扰动预算 ε", type: "number", min: 0.0, max: 0.3, step: 0.001, default: 0.031 },
+        { key: "queries", label: "查询预算", type: "number", min: 100, max: 50000, step: 50, default: 5000 },
+        { key: "p_init", label: "初始扰动比例 p_init", type: "number", min: 0.001, max: 0.5, step: 0.001, default: 0.1 },
+        { key: "seed", label: "随机种子", type: "number", min: 0, max: 999999, step: 1, default: 42 },
+      ]
+    },
+    "a-textfooler": {
+      title: "TextFooler 参数",
+      fields: [
+        { key: "max_changes", label: "最大替换比例", type: "number", min: 0.01, max: 0.5, step: 0.01, default: 0.15, unit: "（比例）" },
+        { key: "similarity", label: "语义相似度阈值", type: "number", min: 0.5, max: 0.99, step: 0.01, default: 0.85 },
+        { key: "topk", label: "候选词 Top-K", type: "number", min: 5, max: 200, step: 5, default: 50 },
+        { key: "seed", label: "随机种子", type: "number", min: 0, max: 999999, step: 1, default: 42 },
+      ]
+    }
+  };
+
+  // 黄金数据集指标
+  const goldenDatasets = {
+    "ds-img-cifar10": {
+      name: "CIFAR-10 黄金数据集",
+      cleanAcc: 0.945,
+      robustAcc: 0.712,
+      asr: 0.288,
+      avgEps: 0.031,
+      avgQueries: 3200,
+      totalSeconds: 156
+    },
+    "ds-img-imagenet-mini": {
+      name: "ImageNet-Mini 黄金数据集",
+      cleanAcc: 0.812,
+      robustAcc: 0.543,
+      asr: 0.457,
+      avgEps: 0.025,
+      avgQueries: 4500,
+      totalSeconds: 245
+    },
+    "ds-txt-agnews": {
+      name: "AG News 黄金数据集",
+      cleanAcc: 0.961,
+      robustAcc: 0.683,
+      asr: 0.317,
+      avgEps: 0.15,
+      avgQueries: 0,
+      totalSeconds: 189
+    },
+    "ds-aud-esc50-mini": {
+      name: "ESC-50-Mini 黄金数据集",
+      cleanAcc: 0.852,
+      robustAcc: 0.624,
+      asr: 0.376,
+      avgEps: 0.028,
+      avgQueries: 0,
+      totalSeconds: 203
+    }
+  };
+
+  function getDatasets(modality) {
+    return datasets.filter(d => !modality || d.modality === modality);
+  }
+  function getModelsByDataset(datasetId) {
+    return models.filter(m => m.datasetId === datasetId);
+  }
+  function getAttacks(modality, task, threat) {
+    return attacks.filter(a => a.modality === modality && a.task === task && (!threat || a.modes.includes(threat)));
+  }
+  function getSchema(attackId) {
+    return schemas[attackId] || { title: "参数", fields: [] };
+  }
+  function getGoldenDataset(datasetId) {
+    return goldenDatasets[datasetId] || null;
+  }
+
+  return { getDatasets, getModelsByDataset, getAttacks, getSchema, getGoldenDataset };
+})();
+
+/* ---------------------------
+   UI Components
+---------------------------- */
+const SidebarItem = {
+  props: ["icon","label","active","badge","view"],
+  emits: ["click"],
+  template: `
+    <div
+      @click="$emit('click')"
+      :class="[
+        'group flex items-center justify-between px-3 py-2.5 mb-1 rounded-lg cursor-pointer transition-all',
+        active ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 font-medium shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+      ]">
+      <div class="flex items-center gap-3">
+        <i :data-lucide="icon" :class="[
+          'w-[18px] h-[18px]',
+          active ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'
+        ]"></i>
+        <span class="text-sm">{{ label }}</span>
+      </div>
+      <span v-if="badge" class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full font-medium border border-gray-200">
+        {{ badge }}
+      </span>
+    </div>
+  `
+};
+
+const PlaceholderView = {
+  props: ["title"],
+  setup() {
+    onMounted(() => lucide.createIcons());
+    return {};
+  },
+  template: `
+    <div class="max-w-7xl mx-auto space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ title }}</h1>
+          <p class="text-gray-600">该模块为演示占位，后续可按同样风格扩展。</p>
+        </div>
+      </div>
+      <div class="p-12 border border-gray-200 rounded-xl bg-gradient-to-br from-gray-50 to-white text-center">
+        <i data-lucide="construction" class="w-16 h-16 text-gray-400 mx-auto mb-4"></i>
+        <p class="text-gray-500">功能开发中...</p>
+      </div>
+    </div>
+  `
+};
+
+const DashboardView = {
+  setup() {
+    onMounted(() => lucide.createIcons());
+    return {};
+  },
+  template: `
+    <div class="max-w-7xl mx-auto space-y-8">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">控制台</h1>
+          <p class="text-gray-600">任务创建 · 队列状态 · 报告概览</p>
+        </div>
+        <button class="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-lg">
+          <i data-lucide="plus" class="w-4 h-4 inline-block mr-2"></i>
+          新建评估任务
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-lg transition-all">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">运行中任务</span>
+            <i data-lucide="activity" class="w-5 h-5 text-indigo-600"></i>
+          </div>
+          <div class="text-3xl font-bold text-gray-900">2</div>
+          <div class="text-xs text-gray-500 mt-2">SSE/WS 推送中</div>
+        </div>
+
+        <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-lg transition-all">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">近24h 完成</span>
+            <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+          </div>
+          <div class="text-3xl font-bold text-gray-900">18</div>
+          <div class="text-xs text-gray-500 mt-2">平均 6m/任务</div>
+        </div>
+
+        <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-lg transition-all">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">算力利用率</span>
+            <i data-lucide="cpu" class="w-5 h-5 text-purple-600"></i>
+          </div>
+          <div class="text-3xl font-bold text-gray-900">62%</div>
+          <div class="text-xs text-gray-500 mt-2">GPU: 1/2 Busy</div>
+        </div>
+
+        <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-lg transition-all">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-600">异常告警</span>
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+          </div>
+          <div class="text-3xl font-bold text-gray-900">1</div>
+          <div class="text-xs text-gray-500 mt-2">疑似梯度遮蔽</div>
+        </div>
+      </div>
+
+      <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-gray-900">快速入口</h3>
+          <span class="text-xs text-gray-500">建议：先跑基线，再跑多攻击对比</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button class="p-4 rounded-lg border border-gray-200 hover:bg-gray-50 text-left">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                <i data-lucide="shield-alert" class="w-5 h-5 text-red-600"></i>
+              </div>
+              <div>
+                <div class="font-semibold">鲁棒性评估</div>
+                <div class="text-xs text-gray-500">创建攻击任务与报告</div>
+              </div>
+            </div>
+          </button>
+          <button class="p-4 rounded-lg border border-gray-200 hover:bg-gray-50 text-left">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <i data-lucide="database" class="w-5 h-5 text-indigo-600"></i>
+              </div>
+              <div>
+                <div class="font-semibold">数据集管理</div>
+                <div class="text-xs text-gray-500">注册与预览样本</div>
+              </div>
+            </div>
+          </button>
+          <button class="p-4 rounded-lg border border-gray-200 hover:bg-gray-50 text-left">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <i data-lucide="flask-conical" class="w-5 h-5 text-purple-600"></i>
+              </div>
+              <div>
+                <div class="font-semibold">算法库</div>
+                <div class="text-xs text-gray-500">Schema 驱动参数表单</div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+};
+
+/* ---------------------------
+   Robustness View (核心)
+---------------------------- */
+const RobustnessView = {
+  setup() {
+    // 选择区
+    const modality = ref("image");
+    const datasetId = ref("ds-img-cifar10");
+    const modelId = ref("");
+
+    // 运行模式
+    const threatModel = ref("whitebox"); // whitebox / blackbox
+    const isTargeted = ref(false);
+
+    // 数据集/模型/攻击
+    const datasets = computed(() => mockApi.getDatasets(modality.value));
+    const selectedDataset = computed(() => datasets.value.find(d => d.id === datasetId.value));
+    const models = computed(() => mockApi.getModelsByDataset(datasetId.value));
+    const selectedModel = computed(() => models.value.find(m => m.id === modelId.value));
+
+    const attacks = computed(() => {
+      const ds = selectedDataset.value;
+      if (!ds) return [];
+      return mockApi.getAttacks(ds.modality, ds.task, threatModel.value);
+    });
+
+    // 攻击配置（可添加多个攻击对比）
+    const selectedAttackId = ref("");
+    const attackList = ref([]); // [{attackId, name, params, enabled, mode}]
+
+    // 表单 schema & params
+    const activeSchema = ref({ title: "", fields: [] });
+    const activeParams = reactive({});
+    const activeEditIndex = ref(-1);
+
+    // 指标/输出
+    const metricOptions = computed(() => {
+      const ds = selectedDataset.value;
+      if (!ds) return [];
+      if (ds.task === "classification") {
+        return [
+          { key: "clean_acc", label: "Clean Accuracy" },
+          { key: "robust_acc", label: "Robust Accuracy" },
+          { key: "asr", label: "Attack Success Rate (ASR)" },
+          { key: "top5_asr", label: "Top-5 ASR" },
+          { key: "conf_drop", label: "Confidence Drop" },
+          { key: "cost", label: "Cost (steps/queries/time)" },
+        ];
+      }
+      return [{ key: "asr", label: "ASR" }];
+    });
+    const selectedMetrics = ref(["clean_acc", "robust_acc", "asr"]);
+
+    const outputOptions = reactive({
+      save_adv: true,
+      save_intermediate: false,
+      export_csv: true,
+      export_json: true
+    });
+
+    // 执行控制
+    const jobState = ref("idle"); // idle/running/paused/done/failed
+    const progress = ref(0);
+    const logs = ref([]);
+    const costEstimate = ref({ samples: 1000, steps: 20, restarts: 1, estSeconds: 120 });
+
+    // 结果（mock）
+    const summary = reactive({
+      cleanAcc: 0.0,
+      robustAcc: 0.0,
+      asr: 0.0,
+      avgEps: 0.0,
+      avgQueries: 0,
+      totalSeconds: 0
+    });
+
+    // 历史任务
+    const history = ref([
+      { id: "JOB-2026-0018", dataset: "CIFAR-10", model: "ResNet-18", attacks: "PGD, FGSM", asr: 0.248, robustAcc: 0.684, time: "2分钟前", status: "完成" },
+      { id: "JOB-2026-0017", dataset: "AG News", model: "BERT-Base", attacks: "TextFooler", asr: 0.312, robustAcc: 0.721, time: "1小时前", status: "完成" }
+    ]);
+
+    // 样本查看弹窗（演示）
+    const sampleModalOpen = ref(false);
+    const sampleDetail = reactive({
+      id: "sample-0001",
+      origPred: "cat",
+      advPred: "dog",
+      confBefore: 0.91,
+      confAfter: 0.36,
+      note: "对抗样本导致决策边界跨越"
+    });
+
+    // ---------- 鲁棒性评估策略 ----------
+    const strategyMode = ref("attack"); // "attack" 或 "externalDataset"
+    
+    // 外部数据集相关
+    const externalDataset = reactive({
+      name: "",
+      size: 0,
+      type: "",
+      textPreview: "",
+      loaded: false,
+      stats: {
+        samples: 0,
+        classes: 0,
+        input: ""
+      }
+    });
+    
+    const externalDatasetFileInputRef = ref(null);
+
+    // ---------- Tab（7个模块，且仅展示当前模块） ----------
+    const tabs = [
+      { id: "ds", title: "数据集选择", icon: "database" },
+      { id: "model", title: "模型选择与训练", icon: "cpu" },
+      { id: "strategy", title: "鲁棒性评估策略选择", icon: "flask-conical" },
+      { id: "params", title: "参数配置", icon: "sliders" },
+      { id: "metrics", title: "指标与输出", icon: "bar-chart-3" },
+      { id: "run", title: "运行控制", icon: "activity" },
+      { id: "results", title: "结果总览", icon: "bar-chart-4" },
+    ];
+    const activeTab = ref("ds"); // 初始处于"数据集选择"
+
+    function switchTab(id) {
+      activeTab.value = id;
+      nextTick(() => {
+        lucide.createIcons();
+      });
+    }
+
+    // ---------- 策略选择相关函数 ----------
+    function selectStrategy(mode) {
+      strategyMode.value = mode;
+      if (mode === "attack") {
+        // 切换到攻击模式
+        threatModel.value = "whitebox";
+        isTargeted.value = false;
+        attackList.value = [];
+        selectedAttackId.value = "";
+      } else if (mode === "externalDataset") {
+        // 切换到外部数据集测评模式
+        threatModel.value = "";
+        isTargeted.value = false;
+        attackList.value = [];
+        selectedAttackId.value = "";
+      }
+      pushLog("INFO", `已选择评估策略：${mode === "attack" ? "对抗算法选择" : "外部数据集测评"}`);
+    }
+
+    function triggerImportExternalDataset() {
+      externalDatasetFileInputRef.value?.click();
+    }
+
+    function onExternalDatasetFileChange(e) {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+
+      externalDataset.name = f.name;
+      externalDataset.size = f.size;
+      externalDataset.type = f.type || "unknown";
+      externalDataset.loaded = true;
+      
+      // 模拟解析数据集信息
+      externalDataset.stats = {
+        samples: Math.floor(Math.random() * 5000) + 1000,
+        classes: modality.value === "image" ? 10 : (modality.value === "text" ? 4 : 50),
+        input: modality.value === "image" ? "224×224×3" : (modality.value === "text" ? "tokenized" : "1×T@16kHz")
+      };
+      
+      pushLog("INFO", `已导入外部数据集：${f.name}（${Math.round(f.size/1024)} KB）`);
+      pushLog("INFO", `数据集统计：样本数=${externalDataset.stats.samples}, 类别数=${externalDataset.stats.classes}`);
+      
+      // 清空，便于重复选择同名文件也触发 change
+      e.target.value = "";
+    }
+
+    // ---------- 数据集上传相关（新增：移到数据集选择模块） ----------
+    // 文件上传相关
+    const dragover = ref(false);
+    const fileInput = ref(null);
+    const uploadedFile = ref(null);
+    const uploading = ref(false);
+    const uploadPaused = ref(false);
+    const uploadProgress = ref(0);
+    const uploadSpeed = ref(2.5);
+    const remainingTime = ref('02:30');
+    
+    // 数据集配置
+    const datasetName = ref('');
+    const selectedModality = ref('image');
+    const selectedTask = ref('classification');
+    const datasetDescription = ref('');
+
+    const dataModalities = [
+      { id: 'image', label: '图像数据', icon: 'image' },
+      { id: 'time', label: '时序数据', icon: 'activity' },
+      { id: 'text', label: '文本数据', icon: 'type' },
+      { id: 'audio', label: '音频数据', icon: 'music' }
+    ];
+
+    const taskTypes = [
+      { id: 'classification', label: '分类任务' },
+      { id: 'regression', label: '回归任务' },
+      { id: 'detection', label: '检测任务' },
+      { id: 'generation', label: '生成任务' }
+    ];
+
+    // ---------- 模型训练相关（保留在模型选择与训练模块） ----------
+    const selectedTrainModel = ref('lstm');
+    const selectedTrainModelName = computed(() => {
+      const model = recommendedModels.value.find(m => m.id === selectedTrainModel.value);
+      return model ? model.name : '未选择';
+    });
+
+    const selectedLayers = ref(2);
+    const selectedHiddenUnits = ref(64);
+    const selectedLearningRate = ref(0.001);
+    const selectedBatchSize = ref(32);
+    const selectedOptimizer = ref('Adam');
+    const selectedEpochs = ref(50);
+
+    // 训练状态
+    const trainingStarted = ref(false);
+    const trainingPaused = ref(false);
+    const trainingCompleted = ref(false);
+    const overallProgress = ref(0);
+    const currentEpoch = ref(0);
+    const lossValue = ref(1.2345);
+    const accuracy = ref(85.67);
+    const trainingLogs = ref([]);
+    
+    // 生成的模型文件信息
+    const generatedModelFile = ref({
+      name: 'trained_model.pth',
+      type: 'PyTorch Model',
+      size: 4587520, // 4.5 MB
+      path: '/models/trained/' + Date.now() + '_model.pth'
+    });
+
+    // 模型配置选项
+    const layers = [1, 2, 3];
+    const hiddenUnits = [32, 64, 128];
+    const learningRates = [0.01, 0.001, 0.0001];
+    const batchSizes = [16, 32, 64];
+    const optimizers = ['Adam', 'SGD', 'RMSprop'];
+    const epochs = [30, 50, 100];
+
+    // 推荐模型列表
+    const recommendedModels = computed(() => [
+      {
+        id: 'lstm',
+        name: 'LSTM',
+        abbr: 'Long Short-Term Memory',
+        type: '时序模型',
+        typeClass: 'bg-blue-100 text-blue-800',
+        scenario: '时间序列预测、自然语言处理',
+        description: '适用于处理序列数据的循环神经网络变体，能够学习长期依赖关系',
+        icon: 'activity',
+        color: 'bg-gradient-to-br from-blue-500 to-blue-600',
+        rating: 4.5,
+        ratingColor: 'bg-yellow-500'
+      },
+      {
+        id: 'transformer',
+        name: 'Transformer',
+        abbr: 'Attention Mechanism',
+        type: '通用模型',
+        typeClass: 'bg-purple-100 text-purple-800',
+        scenario: '文本翻译、图像识别、语音处理',
+        description: '基于自注意力机制的模型，并行计算能力强，适合多模态任务',
+        icon: 'cpu',
+        color: 'bg-gradient-to-br from-purple-500 to-purple-600',
+        rating: 5,
+        ratingColor: 'bg-green-500'
+      },
+      {
+        id: 'tcn',
+        name: 'TCN',
+        abbr: 'Temporal Convolutional Network',
+        type: '时序模型',
+        typeClass: 'bg-green-100 text-green-800',
+        scenario: '时间序列分类、事件预测',
+        description: '基于卷积神经网络的时间序列模型，感受野大，训练效率高',
+        icon: 'zap',
+        color: 'bg-gradient-to-br from-green-500 to-green-600',
+        rating: 4,
+        ratingColor: 'bg-blue-500'
+      },
+      {
+        id: 'resnet',
+        name: 'ResNet-50',
+        abbr: 'Residual Network',
+        type: '图像模型',
+        typeClass: 'bg-red-100 text-red-800',
+        scenario: '图像分类、目标检测',
+        description: '深度残差网络，解决深度网络训练中的梯度消失问题',
+        icon: 'image',
+        color: 'bg-gradient-to-br from-red-500 to-red-600',
+        rating: 4.8,
+        ratingColor: 'bg-yellow-500'
+      },
+      {
+        id: 'bert',
+        name: 'BERT',
+        abbr: 'Bidirectional Encoder',
+        type: '文本模型',
+        typeClass: 'bg-orange-100 text-orange-800',
+        scenario: '文本分类、问答系统',
+        description: '基于Transformer的双向预训练语言模型',
+        icon: 'type',
+        color: 'bg-gradient-to-br from-orange-500 to-orange-600',
+        rating: 4.7,
+        ratingColor: 'bg-green-500'
+      }
+    ]);
+
+    // ---------- 辅助函数 ----------
+    function pushLog(level, msg) {
+      const t = new Date();
+      const ts = t.toLocaleTimeString();
+      logs.value.unshift({ ts, level, msg });
+      if (logs.value.length > 200) logs.value.pop();
+    }
+
+    function resetActiveParams(schema) {
+      for (const k of Object.keys(activeParams)) delete activeParams[k];
+      schema.fields.forEach(f => { activeParams[f.key] = f.default; });
+    }
+
+    function loadAttackSchema(attackId) {
+      const s = mockApi.getSchema(attackId);
+      activeSchema.value = s;
+      resetActiveParams(s);
+      if (Object.prototype.hasOwnProperty.call(activeParams, "targeted")) {
+        activeParams.targeted = isTargeted.value;
+      }
+    }
+
+    function onAddAttack() {
+      if (!selectedAttackId.value) return;
+      const atk = attacks.value.find(a => a.id === selectedAttackId.value);
+      if (!atk) return;
+
+      const schema = mockApi.getSchema(atk.id);
+      const params = {};
+      schema.fields.forEach(f => params[f.key] = f.default);
+      if (Object.prototype.hasOwnProperty.call(params, "targeted")) params.targeted = isTargeted.value;
+
+      attackList.value.push({
+        attackId: atk.id,
+        name: atk.name,
+        enabled: true,
+        mode: threatModel.value,
+        params
+      });
+
+      pushLog("INFO", `已添加攻击：${atk.name}（${threatModel.value}）`);
+    }
+
+    function onEditAttack(index) {
+      const item = attackList.value[index];
+      activeEditIndex.value = index;
+      selectedAttackId.value = item.attackId;
+      loadAttackSchema(item.attackId);
+      Object.keys(activeParams).forEach(k => {
+        if (Object.prototype.hasOwnProperty.call(item.params, k)) activeParams[k] = item.params[k];
+      });
+      pushLog("INFO", `进入编辑：${item.name}`);
+      switchTab("params");
+    }
+
+    function onSaveAttackEdit() {
+      if (activeEditIndex.value < 0) return;
+      const idx = activeEditIndex.value;
+      const item = attackList.value[idx];
+      item.params = JSON.parse(JSON.stringify(activeParams));
+      pushLog("INFO", `已保存参数：${item.name}`);
+      activeEditIndex.value = -1;
+    }
+
+    function onRemoveAttack(index) {
+      const removed = attackList.value.splice(index, 1);
+      if (removed.length) pushLog("INFO", `已移除攻击：${removed[0].name}`);
+      if (activeEditIndex.value === index) activeEditIndex.value = -1;
+    }
+
+    function onCloneAttack(index) {
+      const item = attackList.value[index];
+      attackList.value.push({
+        attackId: item.attackId,
+        name: item.name + " (Clone)",
+        enabled: item.enabled,
+        mode: item.mode,
+        params: JSON.parse(JSON.stringify(item.params))
+      });
+      pushLog("INFO", `已复制攻击配置：${item.name}`);
+    }
+
+    function computeCostEstimate() {
+      const n = selectedDataset.value?.stats?.samples || 1000;
+      const sampleN = Math.min(n, 1000);
+      let stepsNum = 1;
+      let restarts = 1;
+
+      const enabled = attackList.value.filter(a => a.enabled);
+      if (enabled.length) {
+        const p = enabled[0].params || {};
+        stepsNum = Number(p.steps || 1);
+        restarts = Number(p.restarts || 1);
+        if (enabled[0].mode === "blackbox") {
+          stepsNum = Number(p.queries || 1000) / 250;
+        }
+      }
+      const est = Math.round(sampleN * stepsNum * restarts * 0.006);
+      costEstimate.value = { samples: sampleN, steps: stepsNum, restarts, estSeconds: est };
+      pushLog("INFO", `成本预估：samples=${sampleN}, steps~${stepsNum}, restarts=${restarts}, est≈${est}s`);
+    }
+
+    function validateBeforeRun() {
+      if (!selectedDataset.value) return "请先选择数据集。";
+      if (!selectedModel.value) return "请先选择模型。";
+      
+      if (strategyMode.value === "attack") {
+        if (!attackList.value.some(a => a.enabled)) return "请至少启用一个攻击方法。";
+      } else if (strategyMode.value === "externalDataset") {
+        if (!externalDataset.loaded) return "请先导入外部数据集。";
+      }
+      
+      if (!selectedMetrics.value.length) return "请至少选择一个评估指标。";
+      return "";
+    }
+
+    // ---------- 数据集上传函数（移到数据集选择模块） ----------
+    function triggerFileUpload() {
+      if (fileInput.value) {
+        fileInput.value.click();
+      }
+    };
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        uploadedFile.value = file;
+        // 从文件名提取数据集名称
+        extractDatasetName(file.name);
+        startUploadSimulation();
+      }
+    };
+
+    function handleDrop(event) {
+      dragover.value = false;
+      const file = event.dataTransfer.files[0];
+      if (file) {
+        uploadedFile.value = file;
+        // 从文件名提取数据集名称
+        extractDatasetName(file.name);
+        startUploadSimulation();
+      }
+    };
+
+    function extractDatasetName(fileName) {
+      // 移除文件扩展名
+      let name = fileName.replace(/\.[^/.]+$/, "");
+      // 移除常见后缀
+      name = name.replace(/(_dataset|_data|_train|_test|_val)$/i, "");
+      // 将下划线和连字符替换为空格
+      name = name.replace(/[_-]/g, " ");
+      // 首字母大写
+      name = name.replace(/\b\w/g, char => char.toUpperCase());
+      
+      datasetName.value = name || '未命名数据集';
+      datasetDescription.value = `基于 ${name} 数据集构建的多模态鲁棒性评估模型`;
+    };
+
+    function startUploadSimulation() {
+      uploading.value = true;
+      uploadPaused.value = false;
+      uploadProgress.value = 0;
+      
+      const interval = setInterval(() => {
+        if (!uploadPaused.value && uploadProgress.value < 100) {
+          uploadProgress.value += 2;
+          uploadSpeed.value = (1.5 + Math.random()).toFixed(1);
+          
+          // 计算剩余时间
+          const remainingPercent = 100 - uploadProgress.value;
+          const totalSeconds = Math.round((remainingPercent / 2) * 50);
+          const minutes = Math.floor(totalSeconds / 60);
+          const seconds = totalSeconds % 60;
+          remainingTime.value = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          
+          if (uploadProgress.value >= 100) {
+            clearInterval(interval);
+            uploading.value = false;
+            pushLog("INFO", `数据集上传完成: ${uploadedFile.value.name}`);
+          }
+        }
+      }, 200);
+    };
+
+    function toggleUpload() {
+      uploadPaused.value = !uploadPaused.value;
+    };
+
+    function cancelUpload() {
+      uploadedFile.value = null;
+      uploading.value = false;
+      uploadProgress.value = 0;
+      datasetName.value = '';
+      datasetDescription.value = '';
+      pushLog("INFO", "数据集上传已取消");
+    };
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    // ---------- 模型训练函数（保留在模型选择与训练模块） ----------
+    function selectTrainModel(modelId) {
+      selectedTrainModel.value = modelId;
+    };
+
+    function startTraining() {
+      trainingStarted.value = true;
+      trainingCompleted.value = false;
+      overallProgress.value = 0;
+      currentEpoch.value = 0;
+      lossValue.value = 2.5;
+      accuracy.value = 50.0;
+      trainingLogs.value = [];
+      
+      // 生成模型文件名
+      const timestamp = new Date().getTime();
+      const modelName = selectedTrainModel.value.toUpperCase();
+      generatedModelFile.value = {
+        name: `${datasetName.value.replace(/\s+/g, '_')}_${modelName}_${timestamp}.pth`,
+        type: 'PyTorch Model File',
+        size: Math.floor(Math.random() * 3000000) + 2000000, // 2-5 MB
+        path: `/models/trained/${datasetName.value.replace(/\s+/g, '_')}_${modelName}_${timestamp}.pth`
+      };
+      
+      // 添加初始日志
+      addTrainingLog(`开始训练模型: ${selectedTrainModelName.value}`);
+      addTrainingLog(`数据集: ${datasetName.value}`);
+      addTrainingLog(`配置: ${selectedLayers.value}层, ${selectedHiddenUnits.value}隐藏单元, LR=${selectedLearningRate.value}`);
+      addTrainingLog(`目标轮次: ${selectedEpochs.value}, 批次大小: ${selectedBatchSize.value}`);
+      
+      // 模拟训练过程
+      simulateTraining();
+    };
+
+    function restartTraining() {
+      trainingStarted.value = false;
+      trainingCompleted.value = false;
+      overallProgress.value = 0;
+      currentEpoch.value = 0;
+      lossValue.value = 2.5;
+      accuracy.value = 50.0;
+      trainingLogs.value = [];
+    };
+
+    function toggleTraining() {
+      trainingPaused.value = !trainingPaused.value;
+      addTrainingLog(trainingPaused.value ? '训练已暂停' : '训练已继续');
+    };
+
+    function simulateTraining() {
+      if (trainingCompleted.value) return;
+      
+      const interval = setInterval(() => {
+        if (trainingPaused.value) return;
+        
+        // 更新进度
+        overallProgress.value = Math.min(overallProgress.value + 0.5, 100);
+        currentEpoch.value = Math.floor((overallProgress.value / 100) * selectedEpochs.value);
+        
+        // 模拟损失下降和准确率上升
+        if (lossValue.value > 0.1) {
+          lossValue.value -= 0.01;
+        }
+        if (accuracy.value < 95) {
+          accuracy.value += 0.25;
+        }
+        
+        // 添加训练日志
+        if (Math.random() > 0.7) {
+          addTrainingLog(`Epoch ${currentEpoch.value}: Loss = ${lossValue.value.toFixed(4)}, Acc = ${accuracy.value.toFixed(2)}%`);
+        }
+        
+        // 训练完成
+        if (overallProgress.value >= 100) {
+          clearInterval(interval);
+          trainingCompleted.value = true;
+          trainingStarted.value = false;
+          addTrainingLog('模型训练完成!', 'success');
+          addTrainingLog(`最终准确率: ${accuracy.value.toFixed(2)}%, 最终损失: ${lossValue.value.toFixed(4)}`, 'success');
+          addTrainingLog(`模型已保存至: ${generatedModelFile.value.path}`, 'success');
+        }
+      }, 100);
+    };
+
+    function addTrainingLog(message, type = 'info') {
+      const now = new Date();
+      const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      trainingLogs.value.push({ time, message, type });
+      
+      // 保持日志数量不超过20条
+      if (trainingLogs.value.length > 20) {
+        trainingLogs.value.shift();
+      }
+    };
+
+    function downloadModel() {
+      addTrainingLog('开始下载模型文件...');
+      // 模拟下载
+      setTimeout(() => {
+        addTrainingLog(`模型文件 ${generatedModelFile.value.name} 下载完成`, 'success');
+      }, 1000);
+    };
+
+    function viewModelDetails() {
+      addTrainingLog('查看模型详细信息...');
+      alert(`模型信息:\n名称: ${generatedModelFile.value.name}\n类型: ${generatedModelFile.value.type}\n大小: ${formatFileSize(generatedModelFile.value.size)}\n路径: ${generatedModelFile.value.path}`);
+    };
+
+    // ---------- 运行动画与结果生成 ----------
+    let runTimer = null;
+
+    function startJob() {
+      const err = validateBeforeRun();
+      if (err) { pushLog("ERROR", err); return; }
+
+      jobState.value = "running";
+      progress.value = 0;
+      logs.value = [];
+      
+      if (strategyMode.value === "attack") {
+        pushLog("INFO", `任务启动：dataset=${selectedDataset.value.name}, model=${selectedModel.value.name}`);
+        pushLog("INFO", `攻击数：${attackList.value.filter(a=>a.enabled).length}，指标：${selectedMetrics.value.join(", ")}`);
+      } else {
+        pushLog("INFO", `外部数据集测评启动：model=${selectedModel.value.name}`);
+        pushLog("INFO", `外部数据集：${externalDataset.name}，样本数：${externalDataset.stats.samples}`);
+      }
+
+      // 点击运行 -> 切到运行控制模块
+      switchTab("run");
+
+      // 初始化结果为基线，随时间更新
+      const baseClean = selectedModel.value?.cleanMetric ?? 0.85;
+      
+      // 根据策略模式生成不同的结果
+      if (strategyMode.value === "attack") {
+        summary.cleanAcc = baseClean;
+        summary.robustAcc = baseClean;
+        summary.asr = 0;
+        summary.avgEps = (attackList.value.find(a => a.enabled)?.params?.epsilon ?? 0.031);
+        summary.avgQueries = (threatModel.value === "blackbox") ? (attackList.value.find(a=>a.enabled)?.params?.queries ?? 5000) : 0;
+        summary.totalSeconds = 0;
+      } else {
+        // 外部数据集测评模式
+        summary.cleanAcc = baseClean * 0.95; // 假设外部数据集上准确率略低
+        summary.robustAcc = baseClean * 0.65; // 假设外部数据集鲁棒性较差
+        summary.asr = 1 - (summary.robustAcc / summary.cleanAcc);
+        summary.avgEps = 0.0;
+        summary.avgQueries = 0;
+        summary.totalSeconds = 0;
+      }
+
+      if (runTimer) clearInterval(runTimer);
+
+      runTimer = setInterval(() => {
+        if (jobState.value !== "running") return;
+
+        progress.value = Math.min(100, progress.value + Math.random() * 7 + 2);
+
+        if (strategyMode.value === "attack") {
+          // 对抗算法模式：robust acc 逐步下降，asr 上升
+          const atkFactor = Math.min(0.55, 0.10 + (attackList.value.filter(a=>a.enabled).length-1)*0.06);
+          const drop = atkFactor * (progress.value / 100);
+          summary.robustAcc = Math.max(0, baseClean - drop);
+          summary.asr = Math.max(0, 1 - summary.robustAcc / Math.max(1e-6, baseClean));
+        } else {
+          // 外部数据集模式：结果基于外部数据集
+          const progressFactor = progress.value / 100;
+          summary.robustAcc = baseClean * 0.65 + (baseClean * 0.15 * progressFactor);
+          summary.asr = 1 - (summary.robustAcc / summary.cleanAcc);
+        }
+
+        summary.totalSeconds = Math.round((progress.value/100) * (costEstimate.value.estSeconds || 120));
+
+        pushLog("INFO", `运行中... progress=${progress.value.toFixed(1)}%`);
+
+        if (progress.value >= 100) {
+          clearInterval(runTimer);
+          runTimer = null;
+          jobState.value = "done";
+          progress.value = 100;
+          pushLog("INFO", "任务完成：已生成结果摘要。");
+
+          history.value.unshift({
+            id: "JOB-2026-" + String(Math.floor(Math.random()*9000)+1000),
+            dataset: strategyMode.value === "attack" ? selectedDataset.value.name : externalDataset.name,
+            model: selectedModel.value.name,
+            attacks: strategyMode.value === "attack" ? attackList.value.filter(a=>a.enabled).map(a=>a.name).join(", ") : "外部数据集测评",
+            asr: Number(summary.asr.toFixed(3)),
+            robustAcc: Number(summary.robustAcc.toFixed(3)),
+            time: "刚刚",
+            status: "完成"
+          });
+        }
+      }, 650);
+    }
+
+    function pauseJob() {
+      if (jobState.value !== "running") return;
+      jobState.value = "paused";
+      pushLog("WARN", "任务已暂停。");
+    }
+    function resumeJob() {
+      if (jobState.value !== "paused") return;
+      jobState.value = "running";
+      pushLog("INFO", "任务已继续。");
+    }
+    function stopJob() {
+      if (jobState.value === "idle") return;
+      jobState.value = "failed";
+      pushLog("ERROR", "任务已停止（演示：标记为 failed）。");
+      if (runTimer) { clearInterval(runTimer); runTimer = null; }
+    }
+
+    // ---------- 本地文件读取：导入数据集 ----------
+    const fileInputRef = ref(null);
+    const importedFile = reactive({
+      name: "",
+      size: 0,
+      type: "",
+      textPreview: "",
+      loaded: false
+    });
+
+    function triggerImportDataset() {
+      fileInputRef.value?.click();
+    }
+
+    function onFileChange(e) {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+
+      importedFile.name = f.name;
+      importedFile.size = f.size;
+      importedFile.type = f.type || "unknown";
+      importedFile.loaded = false;
+      importedFile.textPreview = "";
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const txt = typeof reader.result === "string" ? reader.result : "";
+        importedFile.textPreview = txt.slice(0, 800);
+        importedFile.loaded = true;
+        pushLog("INFO", `已读取本地文件：${f.name}（${Math.round(f.size/1024)} KB）`);
+      };
+      reader.onerror = () => {
+        pushLog("ERROR", `读取失败：${f.name}`);
+      };
+
+      // 兼容：文本/JSON/CSV等直接 readAsText；其它类型也以文本预览（演示）
+      reader.readAsText(f);
+      // 清空，便于重复选择同名文件也触发 change
+      e.target.value = "";
+    }
+
+    // ---------- 鲁棒性评估结果计算 ----------
+    const robustnessScore = computed(() => {
+      // 鲁棒性评估公式：综合考虑多个因素
+      const factors = [];
+      
+      if (summary.robustAcc > 0) {
+        // 1. 鲁棒准确率权重最高 (40%)
+        factors.push({ value: summary.robustAcc, weight: 0.4 });
+      }
+      
+      if (summary.asr > 0) {
+        // 2. 攻击成功率越低越好 (30%)
+        factors.push({ value: 1 - summary.asr, weight: 0.3 });
+      }
+      
+      if (summary.avgEps > 0) {
+        // 3. 平均扰动越小越好 (20%)
+        // 假设epsilon最大为0.3，归一化处理
+        const epsScore = 1 - (summary.avgEps / 0.3);
+        factors.push({ value: epsScore, weight: 0.2 });
+      }
+      
+      if (summary.avgQueries > 0) {
+        // 4. 平均查询次数越多，说明越难攻击 (10%)
+        // 假设最大查询次数为10000，归一化处理
+        const queryScore = Math.min(summary.avgQueries / 10000, 1);
+        factors.push({ value: queryScore, weight: 0.1 });
+      } else {
+        // 如果没有查询次数数据，给默认值
+        factors.push({ value: 0.5, weight: 0.1 });
+      }
+      
+      // 计算加权平均
+      const totalWeight = factors.reduce((sum, f) => sum + f.weight, 0);
+      const weightedSum = factors.reduce((sum, f) => sum + (f.value * f.weight), 0);
+      
+      return totalWeight > 0 ? weightedSum / totalWeight : 0;
+    });
+
+    const robustnessLevel = computed(() => {
+      const score = robustnessScore.value * 100;
+      if (score >= 80) return { text: "优秀", color: "text-emerald-600", bg: "bg-emerald-100", border: "border-emerald-200" };
+      if (score >= 60) return { text: "良好", color: "text-blue-600", bg: "bg-blue-100", border: "border-blue-200" };
+      if (score >= 40) return { text: "中等", color: "text-amber-600", bg: "bg-amber-100", border: "border-amber-200" };
+      return { text: "较差", color: "text-red-600", bg: "bg-red-100", border: "border-red-200" };
+    });
+
+    // 黄金数据集指标
+    const goldenDatasetMetrics = computed(() => {
+      return mockApi.getGoldenDataset(datasetId.value);
+    });
+
+    function exportConfig() {
+      const payload = {
+        modality: modality.value,
+        datasetId: datasetId.value,
+        modelId: modelId.value,
+        strategyMode: strategyMode.value,
+        threatModel: threatModel.value,
+        targeted: isTargeted.value,
+        attacks: attackList.value,
+        metrics: selectedMetrics.value,
+        outputs: outputOptions,
+        importedFile: importedFile.loaded ? { name: importedFile.name, size: importedFile.size, type: importedFile.type } : null,
+        externalDataset: externalDataset.loaded ? { name: externalDataset.name, size: externalDataset.size, stats: externalDataset.stats } : null
+      };
+      const json = JSON.stringify(payload, null, 2);
+      navigator.clipboard?.writeText(json);
+      pushLog("INFO", "已导出配置（并复制到剪贴板）。");
+      alert("配置已复制到剪贴板（演示）。");
+    }
+
+    function exportReport() {
+      pushLog("INFO", "导出报告：CSV/JSON（演示占位）。");
+      alert("导出报告：演示占位。后续接后端文件下载。");
+    }
+
+    function fieldVisible(field) {
+      if (!field.visible_if) return true;
+      const { key, equals } = field.visible_if;
+      return activeParams[key] === equals;
+    }
+
+    // Sample Modal
+    function openSampleModal() { sampleModalOpen.value = true; nextTick(()=>lucide.createIcons()); }
+    function closeSampleModal() { sampleModalOpen.value = false; }
+
+    // 计算属性
+    const canProceedToModel = computed(() => {
+      // 检查是否已选择数据集（无论是预置数据集还是上传的数据集）
+      return datasetId.value || (uploadedFile.value && datasetName.value.trim() !== '');
+    });
+
+    onMounted(async () => {
+      const ms = mockApi.getModelsByDataset(datasetId.value);
+      modelId.value = ms.length ? ms[0].id : "";
+      await nextTick();
+      lucide.createIcons();
+      pushLog("INFO", "页面初始化完成。");
+      // 确保初始在"数据集选择"
+      activeTab.value = "ds";
+    });
+
+    watch(activeTab, async () => {
+      await nextTick();
+      lucide.createIcons();
+    });
+
+    watch(modality, () => {
+      const ds = mockApi.getDatasets(modality.value)[0];
+      datasetId.value = ds ? ds.id : "";
+      modelId.value = "";
+      selectedAttackId.value = "";
+      attackList.value = [];
+      externalDataset.loaded = false;
+      pushLog("INFO", `已切换模态：${modality.value}`);
+      switchTab("ds");
+    });
+
+    watch(datasetId, () => {
+      const ms = mockApi.getModelsByDataset(datasetId.value);
+      modelId.value = ms.length ? ms[0].id : "";
+      attackList.value = [];
+      selectedAttackId.value = "";
+      externalDataset.loaded = false;
+      pushLog("INFO", `已选择数据集：${selectedDataset.value?.name || datasetId.value}`);
+    });
+
+    watch(modelId, () => {
+      if (!modelId.value) return;
+      pushLog("INFO", `已选择模型：${selectedModel.value?.name || modelId.value}`);
+    });
+
+    watch(threatModel, () => {
+      attackList.value = [];
+      selectedAttackId.value = "";
+      pushLog("INFO", `威胁模型：${threatModel.value}`);
+    });
+
+    watch(isTargeted, () => {
+      if (Object.prototype.hasOwnProperty.call(activeParams, "targeted")) {
+        activeParams.targeted = isTargeted.value;
+      }
+    });
+
+    watch(selectedAttackId, () => {
+      if (!selectedAttackId.value) return;
+      loadAttackSchema(selectedAttackId.value);
+    });
+
+    // 销毁定时器（单文件 demo 也保留基本清理）
+    window.addEventListener("beforeunload", () => {
+      if (runTimer) clearInterval(runTimer);
+    });
+
+    return {
+      // tabs
+      tabs, activeTab, switchTab,
+      
+      // strategy
+      strategyMode, selectStrategy,
+
+      // selections
+      modality, datasetId, modelId,
+      datasets, selectedDataset, models, selectedModel,
+      threatModel, isTargeted,
+
+      // import local file
+      fileInputRef, triggerImportDataset, onFileChange, importedFile,
+      
+      // external dataset
+      externalDataset, externalDatasetFileInputRef, triggerImportExternalDataset, onExternalDatasetFileChange,
+
+      // attacks & schema
+      attacks, selectedAttackId,
+      attackList, activeSchema, activeParams, activeEditIndex,
+      onAddAttack, onEditAttack, onSaveAttackEdit, onRemoveAttack, onCloneAttack,
+      fieldVisible,
+
+      // metrics & outputs
+      metricOptions, selectedMetrics, outputOptions,
+      computeCostEstimate,
+
+      // run control
+      jobState, progress, logs, costEstimate,
+      startJob, pauseJob, resumeJob, stopJob,
+      exportConfig, exportReport,
+
+      // results
+      summary, robustnessScore, robustnessLevel, goldenDatasetMetrics,
+      openSampleModal,
+      history,
+
+      // modal
+      sampleModalOpen, sampleDetail, closeSampleModal,
+
+      // 数据集上传相关
+      dragover, fileInput, uploadedFile, uploading, uploadPaused, uploadProgress, uploadSpeed, remainingTime,
+      datasetName, selectedModality, selectedTask, datasetDescription, dataModalities, taskTypes,
+      
+      // 模型训练相关
+      selectedTrainModel, selectedTrainModelName,
+      selectedLayers, selectedHiddenUnits, selectedLearningRate, selectedBatchSize, selectedOptimizer, selectedEpochs,
+      trainingStarted, trainingPaused, trainingCompleted, overallProgress, currentEpoch, lossValue, accuracy, trainingLogs,
+      generatedModelFile,
+      layers, hiddenUnits, learningRates, batchSizes, optimizers, epochs, recommendedModels,
+      
+      // 函数
+      triggerFileUpload, handleFileSelect, handleDrop, toggleUpload, cancelUpload,
+      formatFileSize, selectTrainModel,
+      startTraining, restartTraining, toggleTraining, downloadModel, viewModelDetails,
+      canProceedToModel,
+
+      Math
+    };
+  },
+
+  template: `
+    <div class="max-w-7xl mx-auto space-y-8">
+      <!-- Header（按钮与风格保留） -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">多模态鲁棒性评估平台</h1>
+          <p class="text-gray-600">数据集/模型联动 · 鲁棒性评估策略选择 · 参数配置 · 鲁棒指标展示</p>
+        </div>
+        <div class="flex gap-3">
+          <button @click="exportConfig" class="px-4 py-3 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+            <i data-lucide="download" class="w-4 h-4 inline-block mr-2"></i>
+            导出配置
+          </button>
+          <button @click="startJob" class="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors shadow-lg">
+            <i data-lucide="shield-alert" class="w-4 h-4 inline-block mr-2"></i>
+            启动评估测试
+          </button>
+        </div>
+      </div>
+
+      <!-- 顶部 Tab（7项；点击才切换对应模块；不再同屏展示） -->
+      <div class="sticky top-16 z-10">
+        <div class="bg-white/90 backdrop-blur-md border border-gray-200 rounded-xl shadow-sm px-3 py-2">
+          <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <button
+              v-for="(t, idx) in tabs"
+              :key="t.id"
+              @click="switchTab(t.id)"
+              :class="[
+                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors whitespace-nowrap',
+                activeTab===t.id
+                  ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border-indigo-200'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+              ]"
+            >
+              <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow">
+                {{ idx+1 }}
+              </span>
+              <i :data-lucide="t.icon" class="w-4 h-4"></i>
+              <span>{{ t.title }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 当前 Tab 对应模块视图（仅一个展示） -->
+      <transition name="fade" mode="out-in">
+        <!-- 1 数据集选择 -->
+        <div v-if="activeTab==='ds'" key="ds" class="space-y-6">
+          <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">1</span>
+                <h3 class="font-bold text-gray-900">数据集选择</h3>
+              </div>
+              <div class="flex items-center gap-2 text-xs text-gray-500">
+                <i data-lucide="database" class="w-4 h-4"></i>
+                Dataset Panel
+              </div>
+            </div>
+
+            <div class="space-y-6">
+              <!-- 模态选择 -->
+              <div>
+                <label class="text-xs font-semibold text-gray-600">模态类型</label>
+                <select v-model="modality" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  <option value="image">图像 Image</option>
+                  <option value="text">文本 Text</option>
+                  <option value="audio">音频 Audio</option>
+                </select>
+              </div>
+
+              <!-- 预置数据集选择 -->
+              <div>
+                <label class="text-xs font-semibold text-gray-600">预置数据集</label>
+                <select v-model="datasetId" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  <option v-for="d in datasets" :key="d.id" :value="d.id">
+                    {{ d.name }} · {{ d.task }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- 数据集信息 -->
+              <div v-if="selectedDataset" class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div class="text-xs text-gray-500 mb-2">数据集信息</div>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div class="text-xs text-gray-500">任务</div>
+                    <div class="font-medium text-gray-900">{{ selectedDataset?.task }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500">样本数</div>
+                    <div class="font-medium text-gray-900">{{ selectedDataset?.stats?.samples }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500">类别数</div>
+                    <div class="font-medium text-gray-900">{{ selectedDataset?.stats?.classes }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500">输入</div>
+                    <div class="font-medium text-gray-900">{{ selectedDataset?.stats?.input }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 数据集上传区域 -->
+              <div class="border-t border-gray-200 pt-6">
+                <div class="mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900 mb-2">自定义数据集上传</h4>
+                  <p class="text-gray-600">上传您的数据集以进行后续的模型训练和评估</p>
+                </div>
+
+                <!-- 上传区域 -->
+                <div 
+                  @click="triggerFileUpload"
+                  @dragover.prevent="dragover = true"
+                  @dragleave.prevent="dragover = false"
+                  @drop.prevent="handleDrop"
+                  :class="[
+                    'border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 mb-6',
+                    dragover ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50',
+                    uploadedFile ? 'border-green-500 bg-green-50' : ''
+                  ]"
+                >
+                  <div class="mb-4">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                      <i data-lucide="upload-cloud" class="w-8 h-8 text-indigo-600"></i>
+                    </div>
+                    <template v-if="!uploadedFile">
+                      <h3 class="text-lg font-semibold text-gray-900 mb-2">拖放文件到此处</h3>
+                      <p class="text-gray-500 mb-4">或点击选择文件</p>
+                      <button class="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors">
+                        选择文件
+                      </button>
+                    </template>
+                    <template v-else>
+                      <h3 class="text-lg font-semibold text-gray-900 mb-2">文件已上传</h3>
+                      <p class="text-gray-500 mb-2">{{ uploadedFile.name }}</p>
+                      <p class="text-sm text-green-600 font-medium">上传成功</p>
+                    </template>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref="fileInput"
+                    @change="handleFileSelect"
+                    class="hidden"
+                    accept=".csv,.json,.txt,.zip,.tar.gz,.h5,.pkl,.pt"
+                  />
+                </div>
+
+                <!-- 上传进度 -->
+                <div v-if="uploading" class="mb-6">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-700">上传进度</span>
+                    <span class="font-bold text-indigo-600">{{ uploadProgress }}%</span>
+                  </div>
+                  <div class="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      class="h-full progress-bar rounded-full transition-all duration-500"
+                      :style="{ width: uploadProgress + '%' }"
+                    ></div>
+                  </div>
+                  
+                  <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">速度：</span>
+                        <span class="font-mono text-sm font-bold text-indigo-600">{{ uploadSpeed }} MB/s</span>
+                      </div>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">剩余时间：</span>
+                        <span class="font-mono text-sm font-bold text-indigo-600">{{ remainingTime }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 数据集配置信息 -->
+                <div v-if="uploadedFile" class="mb-6">
+                  <h4 class="text-lg font-semibold text-gray-900 mb-4">数据集配置信息</h4>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 左侧配置 -->
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">数据集名称</label>
+                        <input 
+                          type="text" 
+                          v-model="datasetName"
+                          placeholder="从上传文件名自动提取"
+                          class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                        />
+                        <p class="text-xs text-gray-500 mt-1">从上传的文件名中自动提取，可手动修改</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">数据模态选择</label>
+                        <div class="grid grid-cols-2 gap-2">
+                          <label 
+                            v-for="modality in dataModalities" 
+                            :key="modality.id"
+                            :class="[
+                              'p-3 border rounded-lg cursor-pointer transition-all text-center',
+                              selectedModality === modality.id 
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedModality = modality.id"
+                          >
+                            <i :data-lucide="modality.icon" class="w-4 h-4 inline-block mr-2"></i>
+                            {{ modality.label }}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- 右侧配置 -->
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">任务类型选择</label>
+                        <div class="grid grid-cols-2 gap-2">
+                          <label 
+                            v-for="task in taskTypes" 
+                            :key="task.id"
+                            :class="[
+                              'p-3 border rounded-lg cursor-pointer transition-all text-center',
+                              selectedTask === task.id 
+                                ? 'border-purple-500 bg-purple-50 text-purple-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedTask = task.id"
+                          >
+                            {{ task.label }}
+                          </label>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">数据描述</label>
+                        <textarea 
+                          v-model="datasetDescription"
+                          placeholder="请描述您的数据集..."
+                          rows="3"
+                          class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors resize-none"
+                        ></textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 上传控制按钮 -->
+                <div v-if="uploading" class="flex justify-between">
+                  <button 
+                    @click="toggleUpload"
+                    class="px-6 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    {{ uploadPaused ? '继续上传' : '暂停上传' }}
+                  </button>
+                  
+                  <button 
+                    @click="cancelUpload"
+                    class="px-6 py-2.5 border border-red-300 rounded-lg font-medium text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    取消上传
+                  </button>
+                </div>
+              </div>
+
+              <!-- 数据集上传信息展示 -->
+              <div v-if="uploadedFile" class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div class="flex items-center justify-between mb-3">
+                  <div>
+                    <div class="text-sm font-semibold text-gray-900">已上传数据集</div>
+                    <div class="text-xs text-gray-600 mt-1">
+                      文件：{{ uploadedFile.name }} · {{ Math.round(uploadedFile.size/1024) }} KB
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                    已加载
+                  </span>
+                </div>
+                
+                <div class="flex flex-wrap gap-2 mt-3">
+                  <button class="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    采样预览
+                  </button>
+                  <button class="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    字段映射
+                  </button>
+                  <button class="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    统计信息
+                  </button>
+                  <button @click="cancelUpload" class="px-3 py-1.5 text-xs bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
+                    重新上传
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-between pt-4 border-t border-gray-200">
+                <div></div>
+                <button 
+                  @click="switchTab('model')" 
+                  :disabled="!canProceedToModel"
+                  :class="[
+                    'px-6 py-2.5 text-sm rounded-lg font-medium transition-colors',
+                    canProceedToModel 
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  ]"
+                >
+                  下一步：模型选择与训练
+                  <i data-lucide="arrow-right" class="w-4 h-4 inline-block ml-2"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 模型选择与训练 -->
+        <div v-else-if="activeTab==='model'" key="model" class="space-y-6">
+          <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-6">
+              <div class="flex items-center gap-3">
+                <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">2</span>
+                <div>
+                  <h3 class="font-bold text-gray-900">模型选择与训练</h3>
+                  <p class="text-sm text-gray-500 mt-1">基于已选择的数据集进行模型选择和训练</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 text-xs text-gray-500">
+                <i data-lucide="cpu" class="w-4 h-4"></i>
+                Model Panel
+              </div>
+            </div>
+
+            <!-- 数据集信息展示 -->
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-6">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <div class="font-medium text-gray-900">当前数据集</div>
+                  <div class="text-sm text-gray-600 mt-1">
+                    {{ uploadedFile ? datasetName : selectedDataset?.name }} · 
+                    {{ uploadedFile ? selectedModality : selectedDataset?.modality }} · 
+                    {{ uploadedFile ? selectedTask : selectedDataset?.task }}
+                  </div>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                  {{ uploadedFile ? '自定义数据集' : '预置数据集' }}
+                </span>
+              </div>
+              <div v-if="uploadedFile" class="text-xs text-gray-600">
+                文件：{{ uploadedFile.name }} · {{ formatFileSize(uploadedFile.size) }}
+              </div>
+            </div>
+
+            <!-- 推荐模型表格 -->
+            <div class="mb-8">
+              <h4 class="font-bold text-gray-900 mb-4">推荐模型</h4>
+              <div class="overflow-hidden border border-gray-200 rounded-xl">
+                <table class="w-full">
+                  <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">选择</th>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">模型</th>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">模型类型</th>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">适用场景</th>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">简介</th>
+                      <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">推荐指数</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    <tr 
+                      v-for="model in recommendedModels" 
+                      :key="model.id"
+                      :class="[
+                        'hover:bg-gray-50 transition-colors cursor-pointer',
+                        selectedTrainModel === model.id ? 'bg-indigo-50' : ''
+                      ]"
+                      @click="selectTrainModel(model.id)"
+                    >
+                      <td class="px-6 py-4">
+                        <div class="flex items-center">
+                          <div 
+                            :class="[
+                              'w-5 h-5 rounded-full border-2 flex items-center justify-center',
+                              selectedTrainModel === model.id 
+                                ? 'border-indigo-600 bg-indigo-600' 
+                                : 'border-gray-300'
+                            ]"
+                          >
+                            <i 
+                              v-if="selectedTrainModel === model.id" 
+                              data-lucide="check" 
+                              class="w-3 h-3 text-white"
+                            ></i>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                          <div :class="[
+                            'w-10 h-10 rounded-lg flex items-center justify-center',
+                            model.color
+                          ]">
+                            <i :data-lucide="model.icon" class="w-5 h-5 text-white"></i>
+                          </div>
+                          <div>
+                            <div class="font-medium text-gray-900">{{ model.name }}</div>
+                            <div class="text-xs text-gray-500">{{ model.abbr }}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="model-type-cell">
+                          <span class="px-3 py-1 text-xs font-medium rounded-full" :class="model.typeClass">
+                            {{ model.type }}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 text-sm text-gray-700">{{ model.scenario }}</td>
+                      <td class="px-6 py-4 text-sm text-gray-600">{{ model.description }}</td>
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              class="h-full rounded-full" 
+                              :class="model.ratingColor"
+                              :style="{ width: model.rating * 20 + '%' }"
+                            ></div>
+                          </div>
+                          <span class="text-sm font-bold text-gray-900">{{ model.rating }}/5</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 训练参数配置 -->
+            <div class="mb-8">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="font-bold text-gray-900">训练参数配置</h4>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-gray-600">已选择：</span>
+                  <span class="font-bold text-indigo-600">{{ selectedTrainModelName }}</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 网络结构配置 -->
+                <div class="space-y-6">
+                  <div>
+                    <h5 class="font-medium text-gray-900 mb-3">网络结构</h5>
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">层数</label>
+                        <div class="flex gap-2">
+                          <label 
+                            v-for="layer in layers" 
+                            :key="layer"
+                            :class="[
+                              'flex-1 p-3 border rounded-lg cursor-pointer text-center transition-all',
+                              selectedLayers === layer 
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedLayers = layer"
+                          >
+                            {{ layer }}层
+                          </label>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">隐藏单元</label>
+                        <div class="grid grid-cols-3 gap-2">
+                          <label 
+                            v-for="unit in hiddenUnits" 
+                            :key="unit"
+                            :class="[
+                              'p-3 border rounded-lg cursor-pointer text-center transition-all',
+                              selectedHiddenUnits === unit 
+                                ? 'border-purple-500 bg-purple-50 text-purple-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedHiddenUnits = unit"
+                          >
+                            {{ unit }}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 训练参数 -->
+                <div class="space-y-6">
+                  <div>
+                    <h5 class="font-medium text-gray-900 mb-3">训练参数</h5>
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">学习率</label>
+                        <div class="grid grid-cols-3 gap-2">
+                          <label 
+                            v-for="lr in learningRates" 
+                            :key="lr"
+                            :class="[
+                              'p-3 border rounded-lg cursor-pointer text-center transition-all',
+                              selectedLearningRate === lr 
+                                ? 'border-green-500 bg-green-50 text-green-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedLearningRate = lr"
+                          >
+                            {{ lr }}
+                          </label>
+                        </div>
+                      </div>
+                      
+                      <div class="grid grid-cols-2 gap-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-2">批次大小</label>
+                          <div class="flex gap-2">
+                            <label 
+                              v-for="batch in batchSizes" 
+                              :key="batch"
+                              :class="[
+                                'flex-1 p-3 border rounded-lg cursor-pointer text-center transition-all text-sm',
+                                selectedBatchSize === batch 
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' 
+                                  : 'border-gray-300 hover:border-gray-400'
+                              ]"
+                              @click="selectedBatchSize = batch"
+                            >
+                              {{ batch }}
+                            </label>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-2">优化器</label>
+                          <div class="flex gap-2">
+                            <label 
+                              v-for="optimizer in optimizers" 
+                              :key="optimizer"
+                              :class="[
+                                'flex-1 p-2 border rounded-lg cursor-pointer text-center transition-all text-sm',
+                                selectedOptimizer === optimizer 
+                                  ? 'border-orange-500 bg-orange-50 text-orange-700 font-medium' 
+                                  : 'border-gray-300 hover:border-gray-400'
+                              ]"
+                              @click="selectedOptimizer = optimizer"
+                            >
+                              {{ optimizer }}
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">训练轮数</label>
+                        <div class="grid grid-cols-3 gap-2">
+                          <label 
+                            v-for="epoch in epochs" 
+                            :key="epoch"
+                            :class="[
+                              'p-3 border rounded-lg cursor-pointer text-center transition-all',
+                              selectedEpochs === epoch 
+                                ? 'border-red-500 bg-red-50 text-red-700 font-medium' 
+                                : 'border-gray-300 hover:border-gray-400'
+                            ]"
+                            @click="selectedEpochs = epoch"
+                          >
+                            {{ epoch }}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 训练进度 -->
+            <div class="mb-8">
+              <h4 class="font-bold text-gray-900 mb-4">训练进度</h4>
+              
+              <div v-if="!trainingStarted && !trainingCompleted" class="text-center p-8 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                <i data-lucide="play-circle" class="w-12 h-12 text-gray-400 mx-auto mb-4"></i>
+                <p class="text-gray-600 mb-4">点击下方按钮开始模型训练</p>
+                <button 
+                  @click="startTraining"
+                  class="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-medium hover:opacity-90 transition-all shadow-lg"
+                >
+                  <i data-lucide="play" class="w-4 h-4 inline-block mr-2"></i>
+                  开始训练
+                </button>
+              </div>
+              
+              <!-- 训练中 -->
+              <div v-else-if="trainingStarted" class="space-y-6">
+                <!-- 总体进度 -->
+                <div>
+                  <div class="flex justify-between items-center mb-3">
+                    <span class="font-medium text-gray-900">总体训练进度</span>
+                    <span class="font-bold text-indigo-600">{{ overallProgress }}%</span>
+                  </div>
+                  <div class="h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      class="h-full progress-bar rounded-full transition-all duration-1000"
+                      :style="{ width: overallProgress + '%' }"
+                    ></div>
+                  </div>
+                </div>
+                
+                <!-- 详细指标 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm text-gray-700">当前轮次</span>
+                      <span class="font-bold text-blue-600">{{ currentEpoch }}/{{ selectedEpochs }}</span>
+                    </div>
+                    <div class="h-2 bg-blue-100 rounded-full overflow-hidden">
+                      <div class="h-full bg-blue-500 rounded-full" :style="{ width: (currentEpoch / selectedEpochs) * 100 + '%' }"></div>
+                    </div>
+                  </div>
+                  
+                  <div class="p-4 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm text-gray-700">损失值</span>
+                      <span class="font-bold text-green-600">{{ lossValue.toFixed(4) }}</span>
+                    </div>
+                    <div class="flex items-center text-xs text-green-600">
+                      <i data-lucide="trending-down" class="w-4 h-4 mr-1"></i>
+                      下降趋势良好
+                    </div>
+                  </div>
+                  
+                  <div class="p-4 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm text-gray-700">准确率</span>
+                      <span class="font-bold text-purple-600">{{ accuracy.toFixed(2) }}%</span>
+                    </div>
+                    <div class="flex items-center text-xs text-purple-600">
+                      <i data-lucide="trending-up" class="w-4 h-4 mr-1"></i>
+                      持续上升中
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 训练日志 -->
+                <div class="border border-gray-200 rounded-xl overflow-hidden">
+                  <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <h5 class="font-medium text-gray-900">训练日志</h5>
+                  </div>
+                  <div class="p-4 max-h-40 overflow-y-auto">
+                    <div v-for="(log, index) in trainingLogs" :key="index" class="text-sm font-mono mb-2">
+                      <span class="text-gray-500">[{{ log.time }}]</span>
+                      <span :class="log.type === 'info' ? 'text-gray-700' : 'text-green-600'">
+                        {{ log.message }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 训练完成 -->
+              <div v-else-if="trainingCompleted" class="space-y-6">
+                <!-- 训练完成提示 -->
+                <div class="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
+                  <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <i data-lucide="check-circle" class="w-8 h-8 text-white"></i>
+                    </div>
+                    <div class="flex-1">
+                      <h5 class="text-xl font-bold text-gray-900 mb-2">模型训练完成！</h5>
+                      <p class="text-gray-700 mb-3">模型已成功训练并保存，可用于后续的对抗攻击测试。</p>
+                      
+                      <!-- 模型文件信息 -->
+                      <div class="mt-4 p-4 bg-white border border-green-200 rounded-lg">
+                        <div class="flex items-center justify-between mb-3">
+                          <h6 class="font-medium text-gray-900">生成的模型文件</h6>
+                          <div class="flex gap-2">
+                            <button 
+                              @click="downloadModel"
+                              class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
+                            >
+                              <i data-lucide="download" class="w-3 h-3 inline-block mr-1"></i>
+                              下载
+                            </button>
+                            <button 
+                              @click="viewModelDetails"
+                              class="px-3 py-1 border border-green-300 text-green-700 text-xs rounded hover:bg-green-50 transition-colors"
+                            >
+                              <i data-lucide="eye" class="w-3 h-3 inline-block mr-1"></i>
+                              查看
+                            </button>
+                          </div>
+                        </div>
+                        <div class="space-y-2">
+                          <div class="flex items-center gap-3 p-2 bg-gray-50 rounded">
+                            <i data-lucide="file" class="w-4 h-4 text-green-600"></i>
+                            <div class="flex-1">
+                              <div class="font-medium text-sm text-gray-900">{{ generatedModelFile.name }}</div>
+                              <div class="text-xs text-gray-500">{{ generatedModelFile.type }} · {{ formatFileSize(generatedModelFile.size) }}</div>
+                            </div>
+                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                              已保存
+                            </span>
+                          </div>
+                          <div class="text-xs text-gray-600 pl-7">
+                            保存路径: <code class="bg-gray-100 px-1 rounded">{{ generatedModelFile.path }}</code>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- 模型性能摘要 -->
+                      <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                          <div class="text-xs text-gray-600 mb-1">最终准确率</div>
+                          <div class="text-xl font-bold text-green-600">{{ accuracy.toFixed(2) }}%</div>
+                        </div>
+                        <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                          <div class="text-xs text-gray-600 mb-1">最终损失值</div>
+                          <div class="text-xl font-bold text-blue-600">{{ lossValue.toFixed(4) }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 训练日志（查看模式） -->
+                <div class="border border-gray-200 rounded-xl overflow-hidden">
+                  <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                    <h5 class="font-medium text-gray-900">训练日志</h5>
+                    <span class="text-xs text-gray-500">{{ trainingLogs.length }} 条记录</span>
+                  </div>
+                  <div class="p-4 max-h-60 overflow-y-auto">
+                    <div v-for="(log, index) in trainingLogs" :key="index" class="text-sm font-mono mb-2">
+                      <span class="text-gray-500">[{{ log.time }}]</span>
+                      <span :class="log.type === 'info' ? 'text-gray-700' : 'text-green-600'">
+                        {{ log.message }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div class="flex justify-between pt-6 border-t border-gray-200">
+              <button 
+                @click="switchTab('ds')"
+                class="px-6 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <i data-lucide="arrow-left" class="w-4 h-4 inline-block mr-2"></i>
+                上一步：数据集选择
+              </button>
+              
+              <div class="flex gap-3">
+                <button 
+                  v-if="trainingStarted && !trainingCompleted"
+                  @click="toggleTraining"
+                  class="px-6 py-2.5 border border-orange-300 rounded-lg font-medium text-orange-600 hover:bg-orange-50 transition-colors"
+                >
+                  {{ trainingPaused ? '继续训练' : '暂停训练' }}
+                </button>
+                <button 
+                  v-if="trainingCompleted"
+                  @click="restartTraining"
+                  class="px-6 py-2.5 border border-blue-300 rounded-lg font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  <i data-lucide="refresh-cw" class="w-4 h-4 inline-block mr-2"></i>
+                  重新训练
+                </button>
+                <button 
+                  @click="switchTab('strategy')"
+                  :disabled="!trainingCompleted"
+                  :class="[
+                    'px-8 py-2.5 rounded-lg font-medium transition-colors',
+                    trainingCompleted 
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  ]"
+                >
+                  下一步：鲁棒性评估策略选择
+                  <i data-lucide="arrow-right" class="w-4 h-4 inline-block ml-2"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 鲁棒性评估策略选择 -->
+        <div v-else-if="activeTab==='strategy'" key="strategy" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">3</span>
+              <h3 class="font-bold text-gray-900">鲁棒性评估策略选择</h3>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <i data-lucide="flask-conical" class="w-4 h-4"></i>
+              Strategy Selector
+            </div>
+          </div>
+
+          <div class="space-y-6">
+            <!-- 策略选择卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- 方法1：对抗算法选择 -->
+              <div :class="[
+                'p-6 border rounded-xl cursor-pointer transition-all',
+                strategyMode === 'attack' 
+                  ? 'bg-gradient-to-br from-indigo-50 to-white border-indigo-300 shadow-md' 
+                  : 'bg-white border-gray-200 hover:bg-gray-50'
+              ]" @click="selectStrategy('attack')">
+                <div class="flex items-center gap-3 mb-4">
+                  <div :class="[
+                    'w-12 h-12 rounded-xl flex items-center justify-center',
+                    strategyMode === 'attack' ? 'bg-indigo-600' : 'bg-gray-100'
+                  ]">
+                    <i data-lucide="swords" class="w-6 h-6" :class="strategyMode === 'attack' ? 'text-white' : 'text-gray-600'"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-gray-900">对抗算法选择</h4>
+                    <p class="text-xs text-gray-600 mt-1">使用对抗攻击算法测试模型鲁棒性</p>
+                  </div>
+                </div>
+                <div class="space-y-2 text-sm text-gray-700">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>支持白盒/黑盒攻击</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>多攻击方法对比</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>参数可配置</span>
+                  </div>
+                </div>
+                <div class="mt-4">
+                  <span :class="[
+                    'text-xs px-3 py-1 rounded-full',
+                    strategyMode === 'attack' 
+                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
+                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                  ]">
+                    {{ strategyMode === 'attack' ? '当前选择' : '点击选择' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 方法2：外部数据集测评 -->
+              <div :class="[
+                'p-6 border rounded-xl cursor-pointer transition-all',
+                strategyMode === 'externalDataset' 
+                  ? 'bg-gradient-to-br from-emerald-50 to-white border-emerald-300 shadow-md' 
+                  : 'bg-white border-gray-200 hover:bg-gray-50'
+              ]" @click="selectStrategy('externalDataset')">
+                <div class="flex items-center gap-3 mb-4">
+                  <div :class="[
+                    'w-12 h-12 rounded-xl flex items-center justify-center',
+                    strategyMode === 'externalDataset' ? 'bg-emerald-600' : 'bg-gray-100'
+                  ]">
+                    <i data-lucide="database" class="w-6 h-6" :class="strategyMode === 'externalDataset' ? 'text-white' : 'text-gray-600'"></i>
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-gray-900">外部数据集测评</h4>
+                    <p class="text-xs text-gray-600 mt-1">使用外部对抗数据集评估模型鲁棒性</p>
+                  </div>
+                </div>
+                <div class="space-y-2 text-sm text-gray-700">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>支持自定义数据集</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>批量评估效率高</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                    <span>与黄金数据集对比</span>
+                  </div>
+                </div>
+                <div class="mt-4">
+                  <span :class="[
+                    'text-xs px-3 py-1 rounded-full',
+                    strategyMode === 'externalDataset' 
+                      ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                  ]">
+                    {{ strategyMode === 'externalDataset' ? '当前选择' : '点击选择' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 策略详情区域 -->
+            <div v-if="strategyMode === 'attack'" class="p-6 border border-gray-200 rounded-xl bg-gray-50">
+              <div class="mb-4">
+                <h4 class="font-bold text-gray-900 mb-2">对抗算法选择配置</h4>
+                <p class="text-sm text-gray-600">选择威胁模型和攻击方法</p>
+              </div>
+              
+              <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-xs font-semibold text-gray-600">威胁模型</label>
+                    <select v-model="threatModel" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                      <option value="whitebox">白盒（White-box）</option>
+                      <option value="blackbox">黑盒（Black-box）</option>
+                    </select>
+                  </div>
+
+                  <div class="flex items-end">
+                    <div class="w-full p-3 bg-white border border-gray-200 rounded-lg">
+                      <div class="flex justify-between items-center">
+                        <span class="text-xs font-semibold text-gray-600">目标攻击</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input v-model="isTargeted" type="checkbox" class="sr-only peer">
+                          <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </label>
+                      </div>
+                      <div class="text-[11px] text-gray-500 mt-2">（分类任务常用非定向；此处演示开关）</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-xs font-semibold text-gray-600">可用攻击方法（按数据集/模型自动过滤）</label>
+                  <select v-model="selectedAttackId" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                    <option value="">请选择攻击方法...</option>
+                    <option v-for="a in attacks" :key="a.id" :value="a.id">
+                      {{ a.name }} · {{ a.desc }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button @click="onAddAttack" class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    添加到攻击列表
+                  </button>
+                  <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    加载默认参数
+                  </button>
+                  <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    保存为预设
+                  </button>
+                </div>
+
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="px-4 py-2 bg-gray-100 border-b border-gray-200 text-xs font-semibold text-gray-600 flex justify-between">
+                    <span>攻击列表（可多攻击对比）</span>
+                    <span class="text-gray-500">启用/编辑/复制/删除</span>
+                  </div>
+
+                  <div v-if="attackList.length===0" class="p-4 text-sm text-gray-500">
+                    尚未添加攻击方法。建议：先添加 FGSM 或 PGD。
+                  </div>
+
+                  <div v-else class="divide-y divide-gray-100">
+                    <div v-for="(it, idx) in attackList" :key="idx" class="p-4 hover:bg-gray-50">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="flex-1">
+                          <div class="flex items-center gap-2">
+                            <span class="font-semibold text-gray-900">{{ it.name }}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-600">
+                              {{ it.mode }}
+                            </span>
+                            <span v-if="it.params && it.params.epsilon!=null" class="text-[10px] px-2 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700">
+                              ε={{ Number(it.params.epsilon).toFixed(3) }}
+                            </span>
+                          </div>
+                          <div class="text-xs text-gray-500 mt-1">
+                            参数摘要：{{ Object.keys(it.params||{}).slice(0,4).map(k=>k+'='+it.params[k]).join(' · ') }}<span v-if="Object.keys(it.params||{}).length>4"> ...</span>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                          <label class="inline-flex items-center gap-2 text-xs text-gray-600">
+                            <input type="checkbox" v-model="it.enabled" class="rounded border-gray-300">
+                            启用
+                          </label>
+                          <button @click="onEditAttack(idx)" class="px-2 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">编辑</button>
+                          <button @click="onCloneAttack(idx)" class="px-2 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">复制</button>
+                          <button @click="onRemoveAttack(idx)" class="px-2 py-1.5 text-xs bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50">删除</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="strategyMode === 'externalDataset'" class="p-6 border border-gray-200 rounded-xl bg-emerald-50">
+              <div class="mb-4">
+                <h4 class="font-bold text-gray-900 mb-2">外部数据集测评配置</h4>
+                <p class="text-sm text-gray-600">导入外部对抗数据集进行模型评估</p>
+              </div>
+              
+              <div class="space-y-4">
+                <div class="p-4 bg-white border border-gray-200 rounded-lg">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-sm font-semibold text-gray-900">外部数据集导入</div>
+                    <button @click="triggerImportExternalDataset" class="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                      导入数据集
+                    </button>
+                  </div>
+                  
+                  <div v-if="!externalDataset.loaded" class="text-center py-6 border border-dashed border-gray-300 rounded-lg">
+                    <i data-lucide="upload" class="w-10 h-10 text-gray-400 mx-auto mb-3"></i>
+                    <p class="text-sm text-gray-600 mb-2">尚未导入外部数据集</p>
+                    <p class="text-xs text-gray-500">支持格式：CSV, JSON, NPZ, 图像/文本/音频文件</p>
+                    <button @click="triggerImportExternalDataset" class="mt-3 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                      点击导入
+                    </button>
+                    
+                    <!-- 隐藏 file input -->
+                    <input ref="externalDatasetFileInputRef" type="file" class="hidden" @change="onExternalDatasetFileChange" />
+                  </div>
+                  
+                  <div v-else class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <div class="font-medium text-gray-900">{{ externalDataset.name }}</div>
+                        <div class="text-xs text-gray-600 mt-1">{{ Math.round(externalDataset.size/1024) }} KB · {{ externalDataset.type }}</div>
+                      </div>
+                      <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        已加载
+                      </span>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-3 text-sm">
+                      <div class="p-3 bg-gray-50 rounded-lg">
+                        <div class="text-xs text-gray-500">样本数</div>
+                        <div class="font-bold text-gray-900 mt-1">{{ externalDataset.stats.samples }}</div>
+                      </div>
+                      <div class="p-3 bg-gray-50 rounded-lg">
+                        <div class="text-xs text-gray-500">类别数</div>
+                        <div class="font-bold text-gray-900 mt-1">{{ externalDataset.stats.classes }}</div>
+                      </div>
+                      <div class="p-3 bg-gray-50 rounded-lg">
+                        <div class="text-xs text-gray-500">输入格式</div>
+                        <div class="font-bold text-gray-900 mt-1">{{ externalDataset.stats.input }}</div>
+                      </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                      <button class="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                        数据集预览
+                      </button>
+                      <button class="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                        统计信息
+                      </button>
+                      <button @click="triggerImportExternalDataset" class="px-3 py-1.5 text-xs bg-white border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-50">
+                        重新导入
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="p-4 bg-white border border-gray-200 rounded-lg">
+                  <div class="text-sm font-semibold text-gray-900 mb-3">评估说明</div>
+                  <div class="text-sm text-gray-700 space-y-2">
+                    <p>外部数据集测评将使用您导入的数据集对选定模型进行批量评估。</p>
+                    <p>系统将计算模型在外部数据集上的准确率、鲁棒准确率等指标，并与黄金数据集进行对比分析。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button @click="switchTab('model')" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                上一步
+              </button>
+              <button @click="switchTab('params')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                下一步：参数配置
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 参数配置（根据策略模式动态调整） -->
+        <div v-else-if="activeTab==='params'" key="params" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">4</span>
+              <div>
+                <h3 class="font-bold text-gray-900">参数配置</h3>
+                <p class="text-xs text-gray-500 mt-1" v-if="strategyMode==='attack'">Schema 驱动动态表单（字段/默认值/校验/依赖显示）</p>
+                <p class="text-xs text-gray-500 mt-1" v-else>外部数据集评估参数配置</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <i data-lucide="sliders" class="w-4 h-4"></i>
+              <span v-if="strategyMode==='attack'">Attack Config</span>
+              <span v-else>External Dataset Config</span>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <!-- 对抗算法模式参数配置 -->
+            <div v-if="strategyMode==='attack'">
+              <div v-if="!selectedAttackId" class="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
+                请先在"鲁棒性评估策略选择"中选择一个攻击方法，以加载对应参数表单。
+              </div>
+
+              <div v-else class="space-y-4">
+                <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                  <div class="flex items-center justify-between">
+                    <div class="font-semibold text-indigo-900">{{ activeSchema.title }}</div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-700">
+                      {{ activeEditIndex>=0 ? "编辑模式" : "预览/新增" }}
+                    </span>
+                  </div>
+                  <div class="text-xs text-indigo-700 mt-1">提示：此处表单仅展示。添加攻击时会采用默认值；编辑时可保存回列表。</div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <template v-for="f in activeSchema.fields" :key="f.key">
+                    <div v-if="fieldVisible(f)" class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium text-gray-700">{{ f.label }}</label>
+                        <span v-if="f.unit" class="text-[11px] text-gray-500">{{ f.unit }}</span>
+                      </div>
+
+                      <template v-if="f.type==='number'">
+                        <div class="flex items-center gap-3">
+                          <input type="number" :min="f.min" :max="f.max" :step="f.step"
+                            v-model.number="activeParams[f.key]"
+                            class="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"/>
+                          <input type="range" :min="f.min" :max="f.max" :step="f.step"
+                            v-model.number="activeParams[f.key]"
+                            class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                        </div>
+                        <div v-if="f.help" class="text-[11px] text-gray-500 mt-2">{{ f.help }}</div>
+                      </template>
+
+                      <template v-else-if="f.type==='enum'">
+                        <select v-model="activeParams[f.key]" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                          <option v-for="op in f.options" :key="op" :value="op">{{ op }}</option>
+                        </select>
+                        <div v-if="f.help" class="text-[11px] text-gray-500 mt-2">{{ f.help }}</div>
+                      </template>
+
+                      <template v-else-if="f.type==='boolean'">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" v-model="activeParams[f.key]" class="sr-only peer">
+                          <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                          <span class="ml-3 text-sm text-gray-600">{{ activeParams[f.key] ? "开启" : "关闭" }}</span>
+                        </label>
+                        <div v-if="f.help" class="text-[11px] text-gray-500 mt-2">{{ f.help }}</div>
+                      </template>
+
+                      <template v-else>
+                        <input v-model="activeParams[f.key]" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"/>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    参数校验
+                  </button>
+                  <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    重置默认
+                  </button>
+                  <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    导入/导出 JSON
+                  </button>
+
+                  <button v-if="activeEditIndex>=0" @click="onSaveAttackEdit"
+                    class="ml-auto px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    保存到攻击列表
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 外部数据集模式参数配置 -->
+            <div v-else>
+              <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div class="flex items-center justify-between">
+                  <div class="font-semibold text-emerald-900">外部数据集评估参数</div>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-700">
+                    外部数据集模式
+                  </span>
+                </div>
+                <div class="text-xs text-emerald-700 mt-1">配置外部数据集的评估参数</div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">批次大小</label>
+                    <span class="text-[11px] text-gray-500">Batch Size</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <input type="number" min="1" max="512" step="1" value="32"
+                      class="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"/>
+                    <input type="range" min="1" max="512" step="1" value="32"
+                      class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-2">较大的批次大小可提高评估效率</div>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">评估样本数</label>
+                    <span class="text-[11px] text-gray-500">Samples</span>
+                  </div>
+                  <select class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="all">全部样本 ({{ externalDataset.stats.samples || 0 }})</option>
+                    <option value="1000">1000个样本</option>
+                    <option value="500">500个样本</option>
+                    <option value="100">100个样本</option>
+                  </select>
+                  <div class="text-[11px] text-gray-500 mt-2">选择用于评估的样本数量</div>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">置信度阈值</label>
+                    <span class="text-[11px] text-gray-500">Confidence Threshold</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <input type="number" min="0.0" max="1.0" step="0.01" value="0.5"
+                      class="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"/>
+                    <input type="range" min="0.0" max="1.0" step="0.01" value="0.5"
+                      class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-2">预测置信度低于此值视为不确定</div>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">数据预处理</label>
+                    <span class="text-[11px] text-gray-500">Preprocessing</span>
+                  </div>
+                  <select class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="auto">自动匹配模型要求</option>
+                    <option value="normalize">归一化处理</option>
+                    <option value="resize">调整尺寸</option>
+                    <option value="none">不预处理</option>
+                  </select>
+                  <div class="text-[11px] text-gray-500 mt-2">确保外部数据与模型输入格式兼容</div>
+                </div>
+              </div>
+
+              <div class="p-4 bg-white border border-gray-200 rounded-lg">
+                <div class="text-sm font-medium text-gray-800 mb-3">高级选项</div>
+                <div class="space-y-2 text-sm text-gray-700">
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" class="rounded border-gray-300" checked>
+                    保存错误样本以供分析
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" class="rounded border-gray-300" checked>
+                    计算每个类别的指标
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" class="rounded border-gray-300">
+                    生成混淆矩阵
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" class="rounded border-gray-300" checked>
+                    与黄金数据集自动对比
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button @click="switchTab('strategy')" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                上一步
+              </button>
+              <button @click="switchTab('metrics')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                下一步：指标与输出
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 指标与输出 -->
+        <div v-else-if="activeTab==='metrics'" key="metrics" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">5</span>
+              <div>
+                <h3 class="font-bold text-gray-900">指标与输出</h3>
+                <p class="text-xs text-gray-500 mt-1">选择评估指标与产物落盘策略</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+              Metrics & Outputs
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div class="text-sm font-medium text-gray-800 mb-3">指标选择</div>
+              <div class="grid grid-cols-1 gap-2">
+                <label v-for="m in metricOptions" :key="m.key" class="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" class="rounded border-gray-300" :value="m.key" v-model="selectedMetrics">
+                  {{ m.label }}
+                </label>
+              </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div class="text-sm font-medium text-gray-800 mb-3">输出选项</div>
+              <div class="space-y-2 text-sm text-gray-700">
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" class="rounded border-gray-300" v-model="outputOptions.save_adv">
+                  保存对抗样本（artifact）
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" class="rounded border-gray-300" v-model="outputOptions.save_intermediate">
+                  保存中间过程（loss/梯度/查询）
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" class="rounded border-gray-300" v-model="outputOptions.export_csv">
+                  导出 CSV
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" class="rounded border-gray-300" v-model="outputOptions.export_json">
+                  导出 JSON
+                </label>
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <button @click="computeCostEstimate" class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                预估运行成本
+              </button>
+              <button @click="exportConfig" class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                导出任务配置
+              </button>
+            </div>
+
+            <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-semibold text-indigo-900">成本预估（Demo）</div>
+                <span class="text-xs text-indigo-700 font-mono">{{ costEstimate.estSeconds }}s</span>
+              </div>
+              <div class="text-xs text-indigo-700 mt-2">
+                samples={{ costEstimate.samples }} · steps~{{ costEstimate.steps }} · restarts={{ costEstimate.restarts }}
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button @click="switchTab('params')" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                上一步
+              </button>
+              <button @click="switchTab('run')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                下一步：运行控制
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 运行控制（点击运行展示动画示例） -->
+        <div v-else-if="activeTab==='run'" key="run" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">6</span>
+              <div>
+                <h3 class="font-bold text-gray-900">运行控制</h3>
+                <p class="text-xs text-gray-500 mt-1">异步任务 · 进度 · 日志</p>
+              </div>
+            </div>
+            <span class="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-600">
+              state={{ jobState }}
+            </span>
+          </div>
+
+          <div class="space-y-4">
+            <!-- 进度条 -->
+            <div class="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden relative">
+              <div class="h-2.5 bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: progress.toFixed(1) + '%' }"></div>
+            </div>
+            <div class="flex justify-between text-xs text-gray-500">
+              <span>进度</span>
+              <span class="font-mono">{{ progress.toFixed(1) }}%</span>
+            </div>
+
+            <!-- 控制按钮（保留） -->
+            <div class="grid grid-cols-2 gap-2">
+              <button @click="startJob" class="px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                开始
+              </button>
+              <button @click="stopJob" class="px-3 py-2 text-sm bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
+                停止
+              </button>
+              <button @click="pauseJob" class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                暂停
+              </button>
+              <button @click="resumeJob" class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                继续
+              </button>
+            </div>
+
+            <button class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+              仅试跑（小样本 sanity check）
+            </button>
+
+            <!-- 动画示例：运行中展示动态"结果预览" -->
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-sm font-semibold text-gray-800">动画示例：实时结果预览（Demo）</div>
+                <div class="flex items-center gap-2 text-xs text-gray-500">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot" v-if="jobState==='running'"></span>
+                  <span v-if="jobState==='running'">streaming</span>
+                  <span v-else>idle</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                  <div class="text-xs text-gray-500">Clean Acc</div>
+                  <div class="mt-1 text-xl font-bold text-gray-900 font-mono">{{ (summary.cleanAcc*100).toFixed(1) }}%</div>
+                </div>
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                  <div class="text-xs text-gray-500">Robust Acc</div>
+                  <div class="mt-1 text-xl font-bold text-emerald-700 font-mono">{{ (summary.robustAcc*100).toFixed(1) }}%</div>
+                </div>
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                  <div class="text-xs text-gray-500">ASR</div>
+                  <div class="mt-1 text-xl font-bold text-red-600 font-mono">{{ (summary.asr*100).toFixed(1) }}%</div>
+                </div>
+              </div>
+
+              <!-- shimmer 动画条：仅 running 时显示 -->
+              <div v-if="jobState==='running'" class="mt-3 relative h-10 rounded-lg overflow-hidden border border-indigo-200 bg-indigo-50 shimmer-bar">
+                <div class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-indigo-700 font-medium">
+                  正在生成评估指标...
+                </div>
+              </div>
+
+              <div class="mt-3 flex justify-end">
+                <button @click="switchTab('results')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  查看结果总览
+                </button>
+              </div>
+            </div>
+
+            <!-- 日志（保留） -->
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-sm font-semibold text-gray-800">实时日志</div>
+                <div class="text-xs text-gray-500">最新在上方</div>
+              </div>
+              <div class="h-40 overflow-y-auto no-scrollbar space-y-2 pr-1">
+                <div v-if="logs.length===0" class="text-sm text-gray-500">暂无日志。</div>
+                <div v-for="(l, i) in logs" :key="i" class="text-xs font-mono">
+                  <span class="text-gray-400">[{{ l.ts }}]</span>
+                  <span :class="l.level==='ERROR' ? 'text-red-600' : (l.level==='WARN' ? 'text-amber-600' : 'text-gray-700')">
+                    {{ l.level }}
+                  </span>
+                  <span class="text-gray-600"> - {{ l.msg }}</span>
+                </div>
+              </div>
+
+              <div class="mt-3 flex gap-2">
+                <button class="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                  复制日志
+                </button>
+                <button class="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                  下载日志
+                </button>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button @click="switchTab('metrics')" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                上一步
+              </button>
+              <button @click="switchTab('results')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                下一步：结果总览
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7 结果总览（运行后生成示例图案/曲线） -->
+        <div v-else key="results" class="space-y-6">
+          <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">7</span>
+                <div>
+                  <h3 class="font-bold text-gray-900">结果总览</h3>
+                  <p class="text-xs text-gray-500 mt-1">运行后将自动生成评估结果与黄金数据集对比</p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button @click="exportReport" class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  导出报告
+                </button>
+                <button @click="openSampleModal" class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                  样本查看器
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 如果未运行，提示 -->
+          <div v-if="jobState==='idle'" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+                <i data-lucide="info" class="w-5 h-5 text-white"></i>
+              </div>
+              <div>
+                <div class="font-semibold text-gray-900">暂无结果</div>
+                <div class="text-sm text-gray-600 mt-1">
+                  请先进入"运行控制"点击开始，平台将生成评估结果摘要。
+                </div>
+                <div class="mt-3">
+                  <button @click="switchTab('run')" class="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                    去运行控制
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 运行中或完成：展示示例结果 -->
+          <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 space-y-4">
+              <!-- 鲁棒性评估结果 -->
+              <div class="p-6 border border-gray-200 rounded-xl bg-gradient-to-br from-indigo-50 to-white shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-bold text-gray-900">鲁棒性评估结果</h3>
+                  <span :class="['text-[10px] px-2 py-0.5 rounded-full border', robustnessLevel.bg, robustnessLevel.border, robustnessLevel.color]">
+                    {{ robustnessLevel.text }}
+                  </span>
+                </div>
+
+                <div class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-sm text-gray-700 mb-1">
+                      <span>鲁棒性综合评分</span>
+                      <span class="font-bold" :class="robustnessLevel.color">{{ (robustnessScore * 100).toFixed(1) }}分</span>
+                    </div>
+                    <div class="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                      <div class="h-2.5 rounded-full bg-gradient-to-r from-emerald-400 to-indigo-600 transition-all" :style="{ width: (robustnessScore * 100) + '%' }"></div>
+                    </div>
+                  </div>
+
+                  <div class="text-xs text-gray-600 space-y-2">
+                    <p>评分公式：</p>
+                    <ul class="list-disc pl-4 space-y-1">
+                      <li>鲁棒准确率权重 40%</li>
+                      <li>攻击失败率权重 30%</li>
+                      <li>扰动大小权重 20%</li>
+                      <li>查询次数权重 10%</li>
+                    </ul>
+                    <p class="mt-2">评分≥80: 优秀 | ≥60: 良好 | ≥40: 中等 | ＜40: 较差</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-bold text-gray-900">结果摘要</h3>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600">
+                    state={{ jobState }}
+                  </span>
+                </div>
+
+                <div class="space-y-3">
+                  <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">Clean Acc</span>
+                    <span class="font-mono text-sm font-bold text-gray-900">{{ (summary.cleanAcc*100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">Robust Acc</span>
+                    <span class="font-mono text-sm font-bold text-emerald-700">{{ (summary.robustAcc*100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">ASR</span>
+                    <span class="font-mono text-sm font-bold text-red-600">{{ (summary.asr*100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">平均扰动</span>
+                    <span class="font-mono text-sm font-bold text-indigo-700">ε={{ Number(summary.avgEps).toFixed(3) }}</span>
+                  </div>
+                  <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">总耗时</span>
+                    <span class="font-mono text-sm font-bold text-gray-900">{{ summary.totalSeconds }}s</span>
+                  </div>
+                  <div v-if="summary.avgQueries>0" class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm text-gray-700">平均查询</span>
+                    <span class="font-mono text-sm font-bold text-gray-900">{{ summary.avgQueries }}</span>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex gap-2">
+                  <button @click="exportReport" class="flex-1 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    导出报告
+                  </button>
+                  <button class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    查看详情
+                  </button>
+                </div>
+              </div>
+
+              <div class="p-6 border border-gray-200 rounded-xl bg-gradient-to-br from-red-50 to-white shadow-sm">
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-white"></i>
+                  </div>
+                  <div>
+                    <div class="font-semibold text-gray-900">风险提示</div>
+                    <div class="text-sm text-gray-600 mt-1">
+                      若 FGSM 鲁棒但 PGD/黑盒攻击成功率高，需警惕梯度遮蔽与假鲁棒性。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+              <!-- 黄金数据集对比 -->
+              <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 class="font-bold text-gray-900">黄金数据集对比</h3>
+                    <p class="text-sm text-gray-500 mt-1">当前评估结果与黄金数据集指标对比（相同模态类型）</p>
+                  </div>
+                  <div class="flex gap-2">
+                    <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">查看详情</button>
+                  </div>
+                </div>
+
+                <div v-if="goldenDatasetMetrics" class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th class="px-4 py-3 text-left">数据集</th>
+                        <th class="px-4 py-3 text-left">Clean Acc</th>
+                        <th class="px-4 py-3 text-left">Robust Acc</th>
+                        <th class="px-4 py-3 text-left">ASR</th>
+                        <th class="px-4 py-3 text-left">平均扰动</th>
+                        <th class="px-4 py-3 text-left">总耗时</th>
+                        <th class="px-4 py-3 text-left">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                      <!-- 当前评估结果 -->
+                      <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">
+                          <div class="font-medium text-gray-900">{{ strategyMode === 'attack' ? selectedDataset?.name : externalDataset.name }}</div>
+                          <div class="text-xs text-gray-500">当前评估</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold" :class="summary.cleanAcc >= goldenDatasetMetrics.cleanAcc ? 'text-emerald-700' : 'text-red-600'">
+                            {{ (summary.cleanAcc*100).toFixed(1) }}%
+                          </div>
+                          <div class="text-xs text-gray-500" :class="summary.cleanAcc >= goldenDatasetMetrics.cleanAcc ? 'text-emerald-600' : 'text-red-500'">
+                            {{ summary.cleanAcc >= goldenDatasetMetrics.cleanAcc ? '+' : '' }}{{ ((summary.cleanAcc - goldenDatasetMetrics.cleanAcc)*100).toFixed(1) }}%
+                          </div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold" :class="summary.robustAcc >= goldenDatasetMetrics.robustAcc ? 'text-emerald-700' : 'text-red-600'">
+                            {{ (summary.robustAcc*100).toFixed(1) }}%
+                          </div>
+                          <div class="text-xs text-gray-500" :class="summary.robustAcc >= goldenDatasetMetrics.robustAcc ? 'text-emerald-600' : 'text-red-500'">
+                            {{ summary.robustAcc >= goldenDatasetMetrics.robustAcc ? '+' : '' }}{{ ((summary.robustAcc - goldenDatasetMetrics.robustAcc)*100).toFixed(1) }}%
+                          </div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold" :class="summary.asr <= goldenDatasetMetrics.asr ? 'text-emerald-700' : 'text-red-600'">
+                            {{ (summary.asr*100).toFixed(1) }}%
+                          </div>
+                          <div class="text-xs text-gray-500" :class="summary.asr <= goldenDatasetMetrics.asr ? 'text-emerald-600' : 'text-red-500'">
+                            {{ summary.asr <= goldenDatasetMetrics.asr ? '-' : '+' }}{{ ((summary.asr - goldenDatasetMetrics.asr)*100).toFixed(1) }}%
+                          </div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-gray-900">ε={{ Number(summary.avgEps).toFixed(3) }}</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-gray-900">{{ summary.totalSeconds }}s</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            当前
+                          </span>
+                        </td>
+                      </tr>
+                      
+                      <!-- 黄金数据集 -->
+                      <tr class="hover:bg-gray-50 bg-amber-50/50">
+                        <td class="px-4 py-3">
+                          <div class="font-medium text-gray-900">{{ goldenDatasetMetrics.name }}</div>
+                          <div class="text-xs text-gray-500">黄金标准</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-amber-700">{{ (goldenDatasetMetrics.cleanAcc*100).toFixed(1) }}%</div>
+                          <div class="text-xs text-amber-600">基准</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-amber-700">{{ (goldenDatasetMetrics.robustAcc*100).toFixed(1) }}%</div>
+                          <div class="text-xs text-amber-600">基准</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-amber-700">{{ (goldenDatasetMetrics.asr*100).toFixed(1) }}%</div>
+                          <div class="text-xs text-amber-600">基准</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-amber-700">ε={{ Number(goldenDatasetMetrics.avgEps).toFixed(3) }}</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div class="font-mono font-bold text-amber-700">{{ goldenDatasetMetrics.totalSeconds }}s</div>
+                        </td>
+                        <td class="px-4 py-3">
+                          <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                            黄金标准
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                
+                <div v-else class="p-4 text-center text-gray-500">
+                  暂无对应黄金数据集信息
+                </div>
+                
+                <div class="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div class="text-xs font-semibold text-gray-700 mb-2">对比分析</div>
+                  <div class="text-sm text-gray-600">
+                    <p v-if="summary.robustAcc >= (goldenDatasetMetrics?.robustAcc || 0)" class="text-emerald-600">
+                      ✓ 当前模型鲁棒性优于黄金数据集标准
+                    </p>
+                    <p v-else class="text-red-600">
+                      ✗ 当前模型鲁棒性低于黄金数据集标准
+                    </p>
+                    <p class="text-gray-500 text-xs mt-2">
+                      黄金数据集提供了相同模态和任务类型下的基准性能指标，用于横向对比评估结果。
+                    </p>
+                </div>
+              </div>
+            </div>
+
+              <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+                <div class="flex items-center justify-between mb-6">
+                  <h3 class="font-bold text-gray-900">评估历史</h3>
+                  <button @click="exportReport" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium">导出报告</button>
+                </div>
+
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th class="px-4 py-3 text-left">任务ID</th>
+                        <th class="px-4 py-3 text-left">数据集</th>
+                        <th class="px-4 py-3 text-left">模型</th>
+                        <th class="px-4 py-3 text-left">评估策略</th>
+                        <th class="px-4 py-3 text-left">ASR</th>
+                        <th class="px-4 py-3 text-left">Robust Acc</th>
+                        <th class="px-4 py-3 text-left">时间</th>
+                        <th class="px-4 py-3 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                      <tr v-for="h in history" :key="h.id" class="hover:bg-gray-50">
+                        <td class="px-4 py-3 font-mono text-xs text-gray-600">{{ h.id }}</td>
+                        <td class="px-4 py-3">{{ h.dataset }}</td>
+                        <td class="px-4 py-3">{{ h.model }}</td>
+                        <td class="px-4 py-3 text-gray-700">{{ h.attacks }}</td>
+                        <td class="px-4 py-3 font-bold text-red-600">{{ (h.asr*100).toFixed(1) }}%</td>
+                        <td class="px-4 py-3 font-bold text-emerald-700">{{ (h.robustAcc*100).toFixed(1) }}%</td>
+                        <td class="px-4 py-3 text-gray-500">{{ h.time }}</td>
+                        <td class="px-4 py-3 text-right">
+                          <button class="text-indigo-600 hover:text-indigo-700 font-medium">详情</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sample Modal -->
+          <transition name="fade">
+            <div v-if="sampleModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <transition name="slide">
+                <div class="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+                  <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <div class="font-bold text-gray-900">样本级查看器（Demo）</div>
+                    <button @click="closeSampleModal" class="p-2 rounded-lg hover:bg-gray-50">
+                      <i data-lucide="x" class="w-5 h-5 text-gray-600"></i>
+                    </button>
+                  </div>
+
+                  <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-3">
+                      <div class="text-sm font-semibold text-gray-900">原始输入</div>
+                      <div class="h-44 rounded-xl bg-gradient-to-br from-gray-100 to-white border border-gray-200 flex items-center justify-center text-gray-500 text-sm">
+                        原图/原文本/原音频（占位）
+                      </div>
+                      <div class="text-xs text-gray-500">预测：{{ sampleDetail.origPred }} · 置信度 {{ (sampleDetail.confBefore*100).toFixed(1) }}%</div>
+                    </div>
+
+                    <div class="space-y-3">
+                      <div class="text-sm font-semibold text-gray-900">对抗输入</div>
+                      <div class="h-44 rounded-xl bg-gradient-to-br from-red-50 to-white border border-red-200 flex items-center justify-center text-red-600 text-sm">
+                        对抗样本（占位）
+                      </div>
+                      <div class="text-xs text-gray-500">预测：{{ sampleDetail.advPred }} · 置信度 {{ (sampleDetail.confAfter*100).toFixed(1) }}%</div>
+                    </div>
+
+                    <div class="md:col-span-2 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                      <div class="text-sm font-semibold text-gray-900 mb-2">差分与过程信息</div>
+                      <div class="text-sm text-gray-700">{{ sampleDetail.note }}</div>
+                      <div class="mt-3 flex gap-2">
+                        <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">保存该样本</button>
+                        <button class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">复制样本ID</button>
+                        <button class="ml-auto px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">加入失败集</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-2">
+                    <button @click="closeSampleModal" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">关闭</button>
+                  </div>
+                </div>
+              </transition>
+            </div>
+          </transition>
+
+          <div class="flex justify-start">
+            <button @click="switchTab('run')" class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+              返回：运行控制
+            </button>
+          </div>
+        </div>
+      </transition>
+    </div>
+  `
+};
+
+/* ---------------------------
+   App
+---------------------------- */
+const app = createApp({
+  components: {
+    "sidebar-item": SidebarItem,
+    "dashboard-view": DashboardView,
+    "robustness-view": RobustnessView,
+    "placeholder-view": PlaceholderView
+  },
+  setup() {
+    const currentView = ref("robustness");
+    const viewTitles = {
+      dashboard: "控制台",
+      robustness: "鲁棒性评估平台",
+      datasets: "数据集管理",
+      models: "模型管理",
+      attacks: "算法库",
+      resources: "算力资源",
+      settings: "系统设置"
+    };
+    const viewTitle = computed(() => viewTitles[currentView.value] || "控制台");
+
+    const changeView = (view) => { currentView.value = view; };
+
+    onMounted(() => lucide.createIcons());
+    watch(currentView, async () => {
+      await nextTick();
+      lucide.createIcons();
+    });
+
+    return { currentView, viewTitle, changeView };
+  }
+});
+
+app.mount("#app");
+</script>
+</body>
+</html>

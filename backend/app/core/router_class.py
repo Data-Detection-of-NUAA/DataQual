@@ -55,6 +55,9 @@ class OperationLogRoute(APIRoute):
             if request.method not in settings.OPERATION_RECORD_METHOD:
                 return response
             route: APIRoute = request.scope.get("route", None)
+            # 添加安全检查
+            if route is None or not hasattr(route, 'name'):
+                return response
             if route.name in settings.IGNORE_OPERATION_FUNCTION:
                 return response
             
