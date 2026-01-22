@@ -315,7 +315,7 @@ class ModelRecommendationService:
         """
         try:
             # 导入数据集模块的 CRUD
-            from app.plugin.module_dataset.dataset.crud import DatasetCRUD
+            from app.plugin.module_application.dataset.crud import DatasetCRUD
 
             dataset = await DatasetCRUD(auth).get_by_id_crud(id=dataset_id)
             if not dataset:
