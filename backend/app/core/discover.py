@@ -53,13 +53,17 @@ def get_dynamic_router() -> APIRouter:
             # 解析文件路径
             rel_path = file.relative_to(base_dir)
             path_parts = rel_path.parts
-            
+
             # 获取顶级模块名
             top_module = path_parts[0]
-            
+
             # 生成路由前缀 (module_xxx -> /xxx)
-            prefix = f"/{top_module[7:]}"
-            
+            # 特殊处理：module_application 不添加容器前缀，直接使用子路由的prefix
+            if top_module == "module_application":
+                prefix = ""  # 不添加容器前缀，让子路由自己定义完整路径
+            else:
+                prefix = f"/{top_module[7:]}"
+
             # 获取或创建容器路由
             if prefix not in container_routers:
                 container_routers[prefix] = APIRouter(prefix=prefix)
