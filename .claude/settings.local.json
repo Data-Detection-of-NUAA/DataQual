@@ -8,7 +8,10 @@
       "Bash(curl:*)",
       "Bash(python -c:*)",
       "Bash(git checkout:*)",
-      "Bash(python main.py:*)"
+      "Bash(python main.py:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(tree:*)"
     ]
   }
 }
