@@ -109,6 +109,17 @@
 
                     <!-- 数据集操作按钮 -->
                     <div class="dataset-actions">
+                      <el-button
+                        v-if="!selectedDataset.sample_count || !selectedDataset.class_count"
+                        type="primary"
+                        plain
+                        size="small"
+                        @click="handleAnalyzeDataset"
+                        :loading="analyzing"
+                      >
+                        <el-icon class="mr-1"><DataAnalysis /></el-icon>
+                        分析数据集
+                      </el-button>
                       <el-button type="danger" plain size="small" @click="handleDeleteDataset">
                         <el-icon class="mr-1"><Delete /></el-icon>
                         删除数据集
@@ -123,53 +134,167 @@
 
         <!-- 步骤2: 模型选择与训练 -->
         <div v-show="currentStep === 1" class="step-panel">
-          <el-form :model="evaluationForm" label-width="140px" label-position="right" class="evaluation-form">
-            <el-form-item label="模型选择" required>
-              <el-select v-model="evaluationForm.modelType" placeholder="请选择模型" style="width: 100%">
-                <el-option label="ResNet-50" value="resnet50" />
-                <el-option label="VGG-16" value="vgg16" />
-                <el-option label="MobileNet" value="mobilenet" />
-                <el-option label="EfficientNet" value="efficientnet" />
-                <el-option label="自定义模型" value="custom" />
-              </el-select>
-            </el-form-item>
+          <!-- 模型推荐组件 -->
+          <ModelRecommendation
+            v-if="evaluationForm.datasetId"
+            ref="modelRecommendationRef"
+            :dataset-id="evaluationForm.datasetId"
+            :modality="selectedDataset?.modality"
+            :task-type="selectedDataset?.task_type"
+            :top-k="5"
+            @select="handleModelSelect"
+          />
 
-            <el-form-item label="模型路径">
-              <el-input
-                v-model="evaluationForm.modelPath"
-                placeholder="请输入模型文件路径或上传模型"
-                maxlength="500"
-              />
-            </el-form-item>
+          <!-- 如果没有选择数据集，显示提示 -->
+          <el-empty v-else description="请先在步骤1中选择数据集">
+            <el-button type="primary" @click="currentStep = 0">返回选择数据集</el-button>
+          </el-empty>
 
-            <el-form-item label="是否需要训练">
-              <el-radio-group v-model="evaluationForm.needTraining">
-                <el-radio :value="false">使用已训练模型</el-radio>
-                <el-radio :value="true">重新训练模型</el-radio>
-              </el-radio-group>
-            </el-form-item>
+          <!-- 已选择的模型配置 -->
+          <el-divider v-if="selectedModelInfo" />
 
-            <el-form-item v-if="evaluationForm.needTraining" label="训练轮数">
-              <el-input-number
-                v-model="evaluationForm.trainingEpochs"
-                :min="1"
-                :max="200"
-                :step="1"
-                controls-position="right"
-              />
-            </el-form-item>
+          <div v-if="selectedModelInfo" class="selected-model-config">
+            <h4>
+              <el-icon><Setting /></el-icon>
+              训练配置 - {{ selectedModelInfo.display_name }}
+            </h4>
 
-            <el-form-item v-if="evaluationForm.needTraining" label="学习率">
-              <el-input-number
-                v-model="evaluationForm.learningRate"
-                :min="0.0001"
-                :max="0.1"
-                :step="0.0001"
-                :precision="4"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-form>
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 16px"
+            >
+              以下参数已自动填充为该模型的推荐配置，您可以根据需要调整
+            </el-alert>
+
+            <el-form :model="evaluationForm" label-width="140px" label-position="right" class="evaluation-form">
+              <!-- 训练参数 -->
+              <div class="training-params">
+                <el-form-item label="训练轮数" required>
+                  <el-input-number
+                    v-model="evaluationForm.trainingEpochs"
+                    :min="1"
+                    :max="500"
+                    :step="1"
+                    controls-position="right"
+                    style="width: 160px"
+                  />
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.epochs || 10 }} 轮
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="批次大小" required>
+                  <el-input-number
+                    v-model="evaluationForm.batchSize"
+                    :min="1"
+                    :max="256"
+                    :step="1"
+                    controls-position="right"
+                    style="width: 160px"
+                  />
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.batch_size || 32 }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="学习率" required>
+                  <el-input-number
+                    v-model="evaluationForm.learningRate"
+                    :min="0.00001"
+                    :max="1"
+                    :step="0.0001"
+                    :precision="5"
+                    controls-position="right"
+                    style="width: 160px"
+                  />
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.learning_rate || 0.001 }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="优化器" required>
+                  <el-select
+                    v-model="evaluationForm.optimizer"
+                    placeholder="请选择优化器"
+                    style="width: 160px"
+                  >
+                    <el-option label="Adam" value="Adam" />
+                    <el-option label="SGD" value="SGD" />
+                    <el-option label="AdamW" value="AdamW" />
+                    <el-option label="RMSprop" value="RMSprop" />
+                  </el-select>
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.optimizer || 'Adam' }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="损失函数" required>
+                  <el-select
+                    v-model="evaluationForm.lossFunction"
+                    placeholder="请选择损失函数"
+                    style="width: 200px"
+                  >
+                    <el-option label="交叉熵损失 (CrossEntropyLoss)" value="CrossEntropyLoss" />
+                    <el-option label="均方误差 (MSELoss)" value="MSELoss" />
+                    <el-option label="二元交叉熵 (BCELoss)" value="BCELoss" />
+                    <el-option label="Focal Loss" value="FocalLoss" />
+                  </el-select>
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.loss_function || 'CrossEntropyLoss' }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="学习率调度器">
+                  <el-select
+                    v-model="evaluationForm.scheduler"
+                    placeholder="请选择学习率调度器"
+                    style="width: 200px"
+                    clearable
+                  >
+                    <el-option label="StepLR (按步衰减)" value="StepLR" />
+                    <el-option label="CosineAnnealingLR (余弦退火)" value="CosineAnnealingLR" />
+                    <el-option label="ReduceLROnPlateau (自适应)" value="ReduceLROnPlateau" />
+                    <el-option label="ExponentialLR (指数衰减)" value="ExponentialLR" />
+                  </el-select>
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.scheduler || 'StepLR' }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="权重衰减">
+                  <el-input-number
+                    v-model="evaluationForm.weightDecay"
+                    :min="0"
+                    :max="0.01"
+                    :step="0.00001"
+                    :precision="5"
+                    controls-position="right"
+                    style="width: 160px"
+                  />
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.weight_decay || 0.0001 }}
+                  </el-text>
+                </el-form-item>
+
+                <el-form-item label="动量 (Momentum)" v-if="evaluationForm.optimizer === 'SGD'">
+                  <el-input-number
+                    v-model="evaluationForm.momentum"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :precision="2"
+                    controls-position="right"
+                    style="width: 160px"
+                  />
+                  <el-text type="info" size="small" style="margin-left: 12px">
+                    推荐: {{ selectedModelInfo.default_config_preview?.momentum || 0.9 }}
+                  </el-text>
+                </el-form-item>
+              </div>
+            </el-form>
+          </div>
         </div>
 
         <!-- 步骤3: 鲁棒性评估策略与选择 -->
@@ -553,6 +678,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { formatToDateTime } from "@/utils/dateUtil";
 import DatasetAPI, { type DatasetInfo } from "@/api/module_dataset/dataset";
 import DatasetUpload from "@/views/module_dataset/dataset/components/DatasetUpload.vue";
+import ModelRecommendation from "./components/ModelRecommendation.vue";
+import type { ModelRecommendationItem } from "@/api/module_train/model";
 
 defineOptions({
   name: "RobustnessEvaluation",
@@ -569,6 +696,13 @@ const datasetTabType = ref("upload");
 const datasets = ref<DatasetInfo[]>([]);
 const datasetsLoading = ref(false);
 const selectedDataset = ref<DatasetInfo | null>(null);
+const analyzing = ref(false);
+
+// 模型推荐相关
+const modelRecommendationRef = ref<InstanceType<typeof ModelRecommendation>>();
+const selectedModelId = ref<number | null>(null);
+const selectedModelInfo = ref<ModelRecommendationItem | null>(null);
+
 
 // 评估表单
 const evaluationForm = reactive({
@@ -576,11 +710,17 @@ const evaluationForm = reactive({
   datasetId: null as number | null,
   evaluationName: "",
   // 步骤2: 模型相关
+  modelId: null as number | null,
   modelType: "resnet50",
-  modelPath: "",
-  needTraining: false,
+  // 训练配置参数
   trainingEpochs: 10,
+  batchSize: 32,
   learningRate: 0.001,
+  optimizer: "Adam",
+  lossFunction: "CrossEntropyLoss",
+  scheduler: "StepLR",
+  weightDecay: 0.0001,
+  momentum: 0.9,
   // 步骤3: 鲁棒性评估策略
   attackMethods: [] as string[],
   perturbationStrength: 50,
@@ -617,7 +757,7 @@ const canProceed = computed(() => {
   }
   // 步骤1: 模型选择与训练
   if (currentStep.value === 1) {
-    return evaluationForm.modelType !== "";
+    return evaluationForm.modelId !== null;
   }
   // 步骤2: 鲁棒性评估策略
   if (currentStep.value === 2) {
@@ -751,8 +891,108 @@ async function handleDatasetChange(datasetId: number) {
   try {
     const response = await DatasetAPI.getDetail(datasetId);
     selectedDataset.value = response.data.data;
+
+    // 自动更新模态类型
+    if (selectedDataset.value?.modality && selectedDataset.value.modality !== 'unknown') {
+      evaluationForm.modality = selectedDataset.value.modality;
+      ElMessage.success(`已自动识别数据集模态: ${getModalityText(selectedDataset.value.modality)}`);
+    }
   } catch (error: any) {
     ElMessage.error("加载数据集详情失败: " + (error.message || "未知错误"));
+  }
+}
+
+// 模型选择回调
+function handleModelSelect(modelId: number, modelInfo: ModelRecommendationItem) {
+  selectedModelId.value = modelId;
+  selectedModelInfo.value = modelInfo;
+  evaluationForm.modelId = modelId;
+  evaluationForm.modelType = modelInfo.model_name;
+
+  // 自动填充所有训练配置参数（来自预训练配置）
+  if (modelInfo.default_config_preview) {
+    const config = modelInfo.default_config_preview;
+
+    // 基础训练参数
+    if (config.epochs) evaluationForm.trainingEpochs = config.epochs;
+    if (config.batch_size) evaluationForm.batchSize = config.batch_size;
+    if (config.learning_rate) evaluationForm.learningRate = config.learning_rate;
+
+    // 优化器相关
+    if (config.optimizer) evaluationForm.optimizer = config.optimizer;
+    if (config.momentum !== undefined) evaluationForm.momentum = config.momentum;
+    if (config.weight_decay !== undefined) evaluationForm.weightDecay = config.weight_decay;
+
+    // 损失函数和调度器
+    if (config.loss_function) evaluationForm.lossFunction = config.loss_function;
+    if (config.scheduler) evaluationForm.scheduler = config.scheduler;
+  }
+
+  ElMessage.success(`已选择模型: ${modelInfo.display_name}，训练配置已自动填充`);
+}
+
+// 分析数据集
+async function handleAnalyzeDataset() {
+  if (!selectedDataset.value || !selectedDataset.value.id) {
+    ElMessage.warning("请先选择数据集");
+    return;
+  }
+
+  const datasetId = selectedDataset.value.id;
+  analyzing.value = true;
+
+  try {
+    ElMessage.info("正在分析数据集，请稍候...");
+    await DatasetAPI.analyze(datasetId);
+
+    // 轮询查询分析状态
+    let retries = 0;
+    const maxRetries = 30; // 最多30次，每次2秒
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusResponse = await DatasetAPI.getAnalyzeStatus(datasetId);
+        const analysisData = statusResponse.data.data;
+        const status = analysisData?.status;
+
+        if (status === 'completed') {
+          clearInterval(pollInterval);
+          analyzing.value = false;
+          ElMessage.success("数据集分析完成!");
+
+          // 重新加载数据集详情
+          const detailResponse = await DatasetAPI.getDetail(datasetId);
+          selectedDataset.value = detailResponse.data.data;
+
+          // 自动更新模态类型到表单
+          if (selectedDataset.value?.modality && selectedDataset.value.modality !== 'unknown') {
+            evaluationForm.modality = selectedDataset.value.modality;
+            ElMessage.success(`已识别数据集模态: ${getModalityText(selectedDataset.value.modality)}`);
+          }
+
+          // 刷新数据集列表
+          await loadDatasets();
+        } else if (status === 'failed') {
+          clearInterval(pollInterval);
+          analyzing.value = false;
+          ElMessage.error("数据集分析失败");
+        }
+
+        retries++;
+        if (retries >= maxRetries) {
+          clearInterval(pollInterval);
+          analyzing.value = false;
+          ElMessage.warning("分析超时，请稍后手动刷新");
+        }
+      } catch (error: any) {
+        clearInterval(pollInterval);
+        analyzing.value = false;
+        console.error("查询分析状态失败:", error);
+        ElMessage.error("查询分析状态失败");
+      }
+    }, 2000); // 每2秒查询一次
+  } catch (error: any) {
+    analyzing.value = false;
+    ElMessage.error("启动分析失败: " + (error.message || "未知错误"));
   }
 }
 
@@ -927,6 +1167,12 @@ function resetEvaluation() {
     modality: "image",
     datasetId: null,
     evaluationName: "",
+    modelId: null,
+    modelType: "resnet50",
+    needTraining: false,
+    trainingEpochs: 10,
+    learningRate: 0.001,
+    optimizer: "adam",
     attackMethods: [],
     perturbationStrength: 50,
     metrics: ["accuracy", "robustness_score"],
@@ -934,6 +1180,8 @@ function resetEvaluation() {
     description: "",
   });
   selectedDataset.value = null;
+  selectedModelId.value = null;
+  selectedModelInfo.value = null;
 }
 
 // 初始化
@@ -1034,6 +1282,40 @@ onMounted(async () => {
             overflow: hidden;
           }
         }
+
+        .selected-model-config {
+          padding: 24px;
+          margin-top: 24px;
+          background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+          border-radius: 12px;
+          border: 1px solid var(--el-border-color-light);
+
+          h4 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 20px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--el-text-color-primary);
+
+            .el-icon {
+              color: var(--el-color-primary);
+            }
+          }
+
+          .training-params {
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 16px;
+          }
+
+          .el-form-item {
+            margin-bottom: 20px;
+          }
+        }
+
 
         .confirm-panel {
           max-width: 800px;
