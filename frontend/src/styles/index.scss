@@ -9,8 +9,10 @@
   flex-direction: column;
   height: 100%;
   padding: 12px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-radius: 4px;
+  box-sizing: border-box;
 }
 
 body {
@@ -28,9 +30,48 @@ body {
   box-shadow: 0 10px 22px rgba(124, 58, 237, 0.08);
 }
 
+.layout__sidebar .el-collapse-transition {
+  height: auto !important;
+  overflow: hidden;
+  transition: none !important;
+}
+
+.layout__sidebar .el-sub-menu > .el-menu--inline {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease, opacity 0.28s ease;
+}
+
+.layout__sidebar .el-sub-menu.is-opened > .el-menu--inline {
+  max-height: 1000px;
+  opacity: 1;
+  overflow: visible;
+}
+
+.layout__sidebar .el-menu--inline .el-menu {
+  transition: none !important;
+}
+
+.layout__sidebar .el-menu--inline {
+  padding: 0;
+}
+
+.layout__sidebar .el-menu--inline .el-menu-item {
+  margin: 0 6px;
+  height: 40px;
+  line-height: 40px;
+}
+
 .layout__topbar {
   background: linear-gradient(90deg, #ffffff 0%, #f7f3ff 40%, #f4f7ff 100%);
   box-shadow: 0 6px 18px rgba(124, 58, 237, 0.12);
+}
+
+.layout__topbar .navbar-actions__item:hover [class^="i-svg:"],
+.layout__topbar .navbar-actions__item:focus-within [class^="i-svg:"],
+.layout__topbar .navbar-actions__item .is-active [class^="i-svg:"] {
+  color: #7c3aed !important;
 }
 
 .el-card {
@@ -49,6 +90,11 @@ body {
 .el-breadcrumb__inner,
 .el-breadcrumb__separator {
   color: #9aa3b2;
+}
+
+.layout__topbar .el-breadcrumb__item .el-breadcrumb__inner.is-link:hover,
+.layout__topbar .el-breadcrumb__item .el-breadcrumb__inner a:hover {
+  color: #7c3aed !important;
 }
 
 .layout__topbar {
@@ -162,7 +208,16 @@ html .layout-left {
   .layout__sidebar .el-menu-item.is-active {
     color: var(--menu-active-text) !important;
     background: linear-gradient(90deg, #efe6ff 0%, #f6e9ff 55%, #f3f0ff 100%) !important;
-    box-shadow: 0 8px 18px rgba(124, 58, 237, 0.18);
+    filter: drop-shadow(0 8px 16px rgba(124, 58, 237, 0.18));
+  }
+
+  .layout__sidebar .el-menu-item.is-active .menu-icon {
+    color: var(--menu-active-text) !important;
+  }
+
+  .layout__sidebar .el-sub-menu.has-active-child > .el-sub-menu__title,
+  .layout__sidebar .el-sub-menu.has-active-child > .el-sub-menu__title .menu-icon {
+    color: var(--menu-active-text) !important;
   }
 
   .layout__sidebar .el-sub-menu.is-opened > .el-sub-menu__title {
@@ -182,6 +237,12 @@ html .layout-left {
     color: inherit;
     opacity: 0.9;
   }
+}
+
+.el-dropdown-menu__item:hover,
+.el-dropdown-menu__item:focus {
+  color: #7c3aed !important;
+  background-color: #f3ecff !important;
 }
 
 // 窄屏时隐藏菜单文字，只显示图标

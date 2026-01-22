@@ -5,24 +5,89 @@
       <DArrowLeft />
     </el-icon>
 
+    <div class="tags-actions-left">
+      <!-- 向右移动按钮 -->
+      <el-icon class="btn" @click="scrollRight">
+        <DArrowRight />
+      </el-icon>
+
+      <!-- 刷新按钮 -->
+      <el-icon class="btn" @click="handleAction('refreshCache')">
+        <RefreshRight />
+      </el-icon>
+
+      <!-- 设置按钮 -->
+      <el-dropdown class="btn" trigger="click">
+        <el-icon>
+          <Setting />
+        </el-icon>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="handleAction('refresh')">
+              <el-icon>
+                <Refresh />
+              </el-icon>
+              {{ t("navbar.refresh") }}
+            </el-dropdown-item>
+
+            <el-dropdown-item v-if="!selectedTag?.affix" @click="handleAction('close')">
+              <el-icon>
+                <Close />
+              </el-icon>
+              {{ t("navbar.close") }}
+            </el-dropdown-item>
+
+            <el-dropdown-item
+              :disabled="isFirstView(routePathMap.get(route.path))"
+              @click="handleAction('closeLeft')"
+            >
+              <el-icon>
+                <Back />
+              </el-icon>
+              {{ t("navbar.closeLeft") }}
+            </el-dropdown-item>
+
+            <el-dropdown-item
+              :disabled="isLastView(routePathMap.get(route.path))"
+              @click="handleAction('closeRight')"
+            >
+              <el-icon>
+                <Right />
+              </el-icon>
+              {{ t("navbar.closeRight") }}
+            </el-dropdown-item>
+
+            <el-dropdown-item
+              :disabled="visitedViews.length <= 1"
+              @click="handleAction('closeOther')"
+            >
+              <el-icon>
+                <Remove />
+              </el-icon>
+              {{ t("navbar.closeOther") }}
+            </el-dropdown-item>
+
+            <el-dropdown-item @click="handleAction('closeAll')">
+              <el-icon>
+                <Minus />
+              </el-icon>
+              {{ t("navbar.closeAll") }}
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </div>
+
     <!-- 标签导航容器 -->
     <nav role="navigation" class="scroll-wrapper">
       <el-scrollbar ref="scrollbarRef" class="scroll-container" @wheel="handleScroll">
         <VueDraggable v-model="visitedViews" :animation="150">
-          <router-link
-            v-for="tag in displayedViews"
-            :key="tag.fullPath"
-            :class="['tags-item', { active: tagsViewStore.isActive(tag) }]"
-            :to="{ path: tag.path, query: tag.query }"
-            @click="tagSwitchSource = 'tab'"
-            @click.middle="handleMiddleClick(tag)"
-          >
+          <router-link v-for="tag in displayedViews" :key="tag.fullPath"
+            :class="['tags-item', { active: tagsViewStore.isActive(tag) }]" :to="{ path: tag.path, query: tag.query }"
+            @click="tagSwitchSource = 'tab'" @click.middle="handleMiddleClick(tag)">
             <!-- 为所有标签添加右键菜单 -->
-            <el-dropdown
-              trigger="contextmenu"
-              @visible-change="(visible) => onContextMenuVisibleChange(visible, tag)"
-              @click.stop
-            >
+            <el-dropdown trigger="contextmenu" @visible-change="(visible) => onContextMenuVisibleChange(visible, tag)"
+              @click.stop>
               <span class="tag-text">{{ translateRouteTitle(tag.title) }}</span>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -33,10 +98,7 @@
                     {{ t("navbar.refresh") }}
                   </el-dropdown-item>
 
-                  <el-dropdown-item
-                    :disabled="tag.affix || visitedViews.length <= 1"
-                    @click="closeSelectedTag(tag)"
-                  >
+                  <el-dropdown-item :disabled="tag.affix || visitedViews.length <= 1" @click="closeSelectedTag(tag)">
                     <el-icon>
                       <Close />
                     </el-icon>
@@ -57,10 +119,7 @@
                     {{ t("navbar.closeRight") }}
                   </el-dropdown-item>
 
-                  <el-dropdown-item
-                    :disabled="visitedViews.length <= 1"
-                    @click="closeOtherTags(tag)"
-                  >
+                  <el-dropdown-item :disabled="visitedViews.length <= 1" @click="closeOtherTags(tag)">
                     <el-icon>
                       <Remove />
                     </el-icon>
@@ -86,11 +145,7 @@
               </template>
             </el-dropdown>
 
-            <span
-              v-if="!tag.affix"
-              class="tag-close-btn"
-              @click.prevent.stop="closeSelectedTag(tag)"
-            >
+            <span v-if="!tag.affix" class="tag-close-btn" @click.prevent.stop="closeSelectedTag(tag)">
               <el-icon>
                 <Close />
               </el-icon>
@@ -99,77 +154,6 @@
         </VueDraggable>
       </el-scrollbar>
     </nav>
-
-    <!-- 向右移动按钮 -->
-    <el-icon class="btn" @click="scrollRight">
-      <DArrowRight />
-    </el-icon>
-
-    <!-- 刷新按钮 -->
-    <el-icon class="btn" @click="handleAction('refreshCache')">
-      <RefreshRight />
-    </el-icon>
-
-    <!-- 设置按钮 -->
-    <el-dropdown class="btn" trigger="click">
-      <el-icon>
-        <Setting />
-      </el-icon>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item @click="handleAction('refresh')">
-            <el-icon>
-              <Refresh />
-            </el-icon>
-            {{ t("navbar.refresh") }}
-          </el-dropdown-item>
-
-          <el-dropdown-item v-if="!selectedTag?.affix" @click="handleAction('close')">
-            <el-icon>
-              <Close />
-            </el-icon>
-            {{ t("navbar.close") }}
-          </el-dropdown-item>
-
-          <el-dropdown-item
-            :disabled="isFirstView(routePathMap.get(route.path))"
-            @click="handleAction('closeLeft')"
-          >
-            <el-icon>
-              <Back />
-            </el-icon>
-            {{ t("navbar.closeLeft") }}
-          </el-dropdown-item>
-
-          <el-dropdown-item
-            :disabled="isLastView(routePathMap.get(route.path))"
-            @click="handleAction('closeRight')"
-          >
-            <el-icon>
-              <Right />
-            </el-icon>
-            {{ t("navbar.closeRight") }}
-          </el-dropdown-item>
-
-          <el-dropdown-item
-            :disabled="visitedViews.length <= 1"
-            @click="handleAction('closeOther')"
-          >
-            <el-icon>
-              <Remove />
-            </el-icon>
-            {{ t("navbar.closeOther") }}
-          </el-dropdown-item>
-
-          <el-dropdown-item @click="handleAction('closeAll')">
-            <el-icon>
-              <Minus />
-            </el-icon>
-            {{ t("navbar.closeAll") }}
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
   </div>
 </template>
 
@@ -203,6 +187,24 @@ const selectedTag = ref<TagView | null>(null);
 
 // 滚动条引用
 const scrollbarRef = ref();
+
+const getScrollWrapper = () => {
+  const scrollbar = scrollbarRef.value;
+  if (!scrollbar) return null;
+  return scrollbar.wrapRef || scrollbar.$el?.querySelector(".el-scrollbar__wrap");
+};
+
+const setScrollLeftValue = (value: number) => {
+  const scrollbar = scrollbarRef.value;
+  if (scrollbar?.setScrollLeft) {
+    scrollbar.setScrollLeft(value);
+    return;
+  }
+  const scrollWrapper = getScrollWrapper();
+  if (scrollWrapper) {
+    scrollWrapper.scrollLeft = value;
+  }
+};
 
 // 标签切换来源跟踪
 const tagSwitchSource = ref<"menu" | "tab" | null>(null);
@@ -394,7 +396,7 @@ const handleMiddleClick = (tag: TagView) => {
  * 处理滚轮事件（优化后）
  */
 const handleScroll = (event: WheelEvent) => {
-  const scrollWrapper = scrollbarRef.value?.wrapRef;
+  const scrollWrapper = getScrollWrapper();
   if (!scrollWrapper) return;
 
   // 检查是否有水平或垂直滚动
@@ -422,8 +424,12 @@ const handleScroll = (event: WheelEvent) => {
     )
   );
 
-  scrollbarRef.value.setScrollLeft(newScrollLeft);
-  scrollbarRef.value.setScrollTop(newScrollTop); // 新增垂直滚动支持
+  setScrollLeftValue(newScrollLeft);
+  if (scrollbarRef.value?.setScrollTop) {
+    scrollbarRef.value.setScrollTop(newScrollTop);
+  } else {
+    scrollWrapper.scrollTop = newScrollTop;
+  }
 };
 
 /**
@@ -627,18 +633,18 @@ const isQuickLinkExists = (tag: TagView): boolean => {
  * 向左滚动标签页
  */
 const scrollLeft = () => {
-  const scrollWrapper = scrollbarRef.value?.wrapRef;
+  const scrollWrapper = getScrollWrapper();
   if (!scrollWrapper) return;
 
   const newScrollLeft = Math.max(0, scrollWrapper.scrollLeft - 200);
-  scrollbarRef.value.setScrollLeft(newScrollLeft);
+  setScrollLeftValue(newScrollLeft);
 };
 
 /**
  * 向右滚动标签页
  */
 const scrollRight = () => {
-  const scrollWrapper = scrollbarRef.value?.wrapRef;
+  const scrollWrapper = getScrollWrapper();
   if (!scrollWrapper) return;
 
   const maxScrollLeft = scrollWrapper.scrollWidth - scrollWrapper.clientWidth;
@@ -669,7 +675,7 @@ const scrollState = ref({
  * 自动滚动到最新标签或确保当前激活标签可见
  */
 const autoScrollToLatestTag = () => {
-  const scrollWrapper = scrollbarRef.value?.wrapRef;
+  const scrollWrapper = getScrollWrapper();
   if (!scrollWrapper) return;
 
   // 获取容器宽度和内容宽度
@@ -801,16 +807,22 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .tags-container {
+  position: relative;
   display: flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
   height: $tags-view-height;
   background-color: var(--el-bg-color);
   border: none;
   border-bottom: 1px solid var(--el-border-color-light);
   box-shadow: none;
+  z-index: 1;
 
   .btn {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -819,9 +831,10 @@ onUnmounted(() => {
     cursor: pointer;
     border: none;
     border-right: 1px solid var(--el-border-color-light);
+    background-color: var(--el-bg-color);
 
     &:hover {
-      color: var(--el-color-primary);
+      color: #7c3aed;
       background-color: var(--el-fill-color-light);
 
       .el-icon {
@@ -830,12 +843,49 @@ onUnmounted(() => {
     }
   }
 
+  :deep(.el-dropdown.btn) {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    background-color: var(--el-bg-color);
+  }
+
   .scroll-wrapper {
-    flex: 1;
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
     overflow: hidden;
   }
 
   .scroll-container {
+    height: 100%;
+    width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .tags-actions-left {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  :deep(.el-scrollbar) {
+    height: 100%;
+    width: 100%;
+  }
+
+  :deep(.el-scrollbar__wrap) {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  :deep(.el-scrollbar__view) {
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
     white-space: nowrap;
   }
 
@@ -856,6 +906,7 @@ onUnmounted(() => {
     &:first-of-type {
       margin-left: 5px;
     }
+
     &:last-of-type {
       margin-right: 5px;
     }

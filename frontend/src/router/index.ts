@@ -93,6 +93,20 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    path: "/dqscan",
+    component: Layout,
+    redirect: "/dqscan/index",
+    meta: { title: "质量探测引擎", icon: "table", keepAlive: false },
+    children: [
+      {
+        path: "index",
+        name: "DQScan",
+        meta: { title: "质量探测引擎", icon: "table", keepAlive: false },
+        component: () => import("@/views/module_application/dqscan/index.vue"),
+      },
+    ],
+  },
 ];
 
 /**

@@ -80,6 +80,15 @@ backend/log/
 # 上传文件
 backend/static/upload/
 backend/uploads/
+backend/static/dqscan/
+backend/static/dqscan/**
+
+# dqscan 本地任务产物（上传/报告/结果等）
+static/dqscan/
+static/dqscan/**
+
+# 本地对话与工作日志（不入库）
+prompt/codexlog.txt
 
 # Jupyter Notebook
 .ipynb_checkpoints
