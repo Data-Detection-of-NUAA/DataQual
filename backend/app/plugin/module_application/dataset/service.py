@@ -35,12 +35,12 @@ from .model import UploadStatusEnum, DatasetModalityEnum
 class StorageService:
     """存储管理服务"""
 
-    # 数据集存储根目录 - 修改为 static/dataset/uploads
+    # 数据集存储根目录 - 所有路径统一到 static/dataset 下
     DATASET_ROOT = Path(settings.BASE_DIR) / "static" / "dataset" / "uploads"
     # 临时文件目录
-    TEMP_ROOT = Path(settings.BASE_DIR) / "storage" / "temp"
+    TEMP_ROOT = Path(settings.BASE_DIR) / "static" / "dataset" / "temp"
     # 分片文件目录
-    CHUNK_ROOT = Path(settings.BASE_DIR) / "storage" / "chunks"
+    CHUNK_ROOT = Path(settings.BASE_DIR) / "static" / "dataset" / "chunks"
 
     @classmethod
     def ensure_directories(cls) -> None:
