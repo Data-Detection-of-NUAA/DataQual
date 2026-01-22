@@ -135,15 +135,19 @@ class StorageService:
                 # 删除文件后，检查并删除空的父目录
                 parent_dir = file_path.parent
                 # 只删除数据集存储目录下的子目录，不删除根目录
-                if parent_dir != cls.DATASET_ROOT and parent_dir.is_relative_to(cls.DATASET_ROOT):
-                    try:
+                # Python 3.7 兼容：使用字符串路径比较而不是 is_relative_to
+                try:
+                    parent_str = str(parent_dir.resolve())
+                    root_str = str(cls.DATASET_ROOT.resolve())
+                    # 检查是否是子目录且不是根目录
+                    if parent_dir != cls.DATASET_ROOT and parent_str.startswith(root_str):
                         # 如果目录为空，删除它
                         if not any(parent_dir.iterdir()):
                             parent_dir.rmdir()
                             log.info(f"已删除空目录: {parent_dir}")
-                    except Exception as e:
-                        # 删除空目录失败不应该影响主流程
-                        log.warning(f"删除空目录失败 {parent_dir}: {str(e)}")
+                except Exception as e:
+                    # 删除空目录失败不应该影响主流程
+                    log.warning(f"删除空目录失败 {parent_dir}: {str(e)}")
         except Exception as e:
             log.error(f"删除文件失败 {file_path}: {str(e)}")
             raise CustomException(msg=f"删除文件失败: {str(e)}")
