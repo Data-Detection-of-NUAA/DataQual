@@ -3,7 +3,11 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, List, Optional, Literal
+from typing import Any, List, Optional
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
 

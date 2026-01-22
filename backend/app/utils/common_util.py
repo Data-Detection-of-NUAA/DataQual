@@ -4,7 +4,11 @@ import importlib
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Sequence, Generator
+from typing import Any, Sequence, Generator
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.engine.row import Row
 from sqlalchemy.orm.collections import InstrumentedList

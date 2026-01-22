@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from typing import Literal
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from fastapi import Query
 

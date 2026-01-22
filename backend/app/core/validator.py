@@ -2,7 +2,10 @@
 
 import re
 from datetime import datetime, date, time
-from typing import Annotated
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
 from pydantic import AfterValidator, PlainSerializer, WithJsonSchema
 
 from app.common.constant import RET
