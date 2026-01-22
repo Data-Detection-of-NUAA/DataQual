@@ -35,8 +35,8 @@ from .model import UploadStatusEnum, DatasetModalityEnum
 class StorageService:
     """存储管理服务"""
 
-    # 数据集存储根目录
-    DATASET_ROOT = Path(settings.BASE_DIR) / "storage" / "datasets"
+    # 数据集存储根目录 - 修改为 static/dataset/uploads
+    DATASET_ROOT = Path(settings.BASE_DIR) / "static" / "dataset" / "uploads"
     # 临时文件目录
     TEMP_ROOT = Path(settings.BASE_DIR) / "storage" / "temp"
     # 分片文件目录
@@ -122,7 +122,7 @@ class StorageService:
     @classmethod
     def delete_file(cls, file_path: Path) -> None:
         """
-        删除文件
+        删除文件，并删除空的父目录
 
         参数:
         - file_path (Path): 文件路径
@@ -131,6 +131,19 @@ class StorageService:
             if file_path.exists() and file_path.is_file():
                 file_path.unlink()
                 log.info(f"已删除文件: {file_path}")
+
+                # 删除文件后，检查并删除空的父目录
+                parent_dir = file_path.parent
+                # 只删除数据集存储目录下的子目录，不删除根目录
+                if parent_dir != cls.DATASET_ROOT and parent_dir.is_relative_to(cls.DATASET_ROOT):
+                    try:
+                        # 如果目录为空，删除它
+                        if not any(parent_dir.iterdir()):
+                            parent_dir.rmdir()
+                            log.info(f"已删除空目录: {parent_dir}")
+                    except Exception as e:
+                        # 删除空目录失败不应该影响主流程
+                        log.warning(f"删除空目录失败 {parent_dir}: {str(e)}")
         except Exception as e:
             log.error(f"删除文件失败 {file_path}: {str(e)}")
             raise CustomException(msg=f"删除文件失败: {str(e)}")
