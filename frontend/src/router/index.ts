@@ -94,6 +94,20 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    path: "/dqtest",
+    component: Layout,
+    redirect: "/dqtest/index",
+    meta: { title: "鲁棒性评估平台", icon: "Shield", keepAlive: true },
+    children: [
+      {
+        path: "index",
+        name: "DqTest",
+        meta: { title: "鲁棒性评估平台", icon: "Shield", requiresAuth: true, keepAlive: true },
+        component: () => import("@/views/module_application/dqtest/index.vue"),
+      },
+    ],
+  },
 ];
 
 /**
