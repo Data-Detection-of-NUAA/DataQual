@@ -1,151 +1,420 @@
 <template>
   <div class="result-dashboard">
     <div class="section-header">
-      <h3>结果总览</h3>
-      <p>查看评估结果和分析报告</p>
+      <div class="flex items-center gap-3">
+        <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">7</span>
+        <div>
+          <h3 class="font-bold text-gray-900">结果总览</h3>
+          <p class="text-sm text-gray-500 mt-1">鲁棒性评估结果分析与报告生成</p>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <el-button @click="exportReport" type="primary">
+          <el-icon class="mr-1"><Download /></el-icon>
+          导出报告
+        </el-button>
+        <el-button @click="openSampleModal" plain>
+          <el-icon class="mr-1"><View /></el-icon>
+          样本查看器
+        </el-button>
+      </div>
     </div>
-    
+
     <div class="form-content">
-      <!-- 结果统计 -->
-      <div class="result-stats">
-        <div class="stat-card">
-          <h4>Clean Accuracy</h4>
-          <p class="stat-value">{{ results.cleanAcc }}%</p>
-        </div>
-        <div class="stat-card">
-          <h4>Robust Accuracy</h4>
-          <p class="stat-value">{{ results.robustAcc }}%</p>
-        </div>
-        <div class="stat-card">
-          <h4>Attack Success Rate</h4>
-          <p class="stat-value">{{ results.asr }}%</p>
+      <!-- 任务未完成提示 -->
+      <div v-if="taskStatus === 'idle'" class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+            <el-icon class="w-5 h-5 text-white"><InfoFilled /></el-icon>
+          </div>
+          <div>
+            <div class="font-semibold text-gray-900">暂无结果</div>
+            <div class="text-sm text-gray-600 mt-1">
+              请先进入"运行控制"点击开始，平台将生成评估结果摘要。
+            </div>
+            <div class="mt-3">
+              <el-button @click="$emit('prev')" type="primary">
+                <el-icon class="mr-1"><ArrowLeft /></el-icon>
+                返回运行控制
+              </el-button>
+            </div>
+          </div>
         </div>
       </div>
-      
-      <!-- 结果详情 -->
-      <div class="result-details">
-        <h4>详细结���</h4>
-        <el-table :data="resultTableData" stripe>
-          <el-table-column prop="metric" label="指标" />
-          <el-table-column prop="value" label="数值" />
-          <el-table-column prop="description" label="描述" />
-        </el-table>
-      </div>
-      
-      <!-- 导出按钮 -->
-      <div class="export-buttons">
-        <el-button type="primary">导出报告</el-button>
-        <el-button>下载数据</el-button>
+
+      <!-- 运行中或完成：展示结果 -->
+      <div v-else class="space-y-6">
+        <!-- 结果摘要 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- 鲁棒性评估结果 -->
+          <div class="lg:col-span-1 space-y-4">
+            <div class="p-6 border border-gray-200 rounded-xl bg-gradient-to-br from-indigo-50 to-white shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-gray-900">鲁棒性评估结果</h3>
+                <el-tag 
+                  :type="robustnessLevel.type" 
+                  size="small"
+                >
+                  {{ robustnessLevel.text }}
+                </el-tag>
+              </div>
+
+              <div class="space-y-4">
+                <!-- 综合评分 -->
+                <div>
+                  <div class="flex justify-between text-sm text-gray-700 mb-2">
+                    <span>鲁棒性综合评分</span>
+                    <span class="font-bold text-indigo-600">{{ (robustnessScore * 100).toFixed(1) }}分</span>
+                  </div>
+                  <div class="w-full bg-gray-200 h-3 rounded-full overflow-hidden">
+                    <div 
+                      class="h-3 rounded-full transition-all duration-1000 bg-gradient-to-r from-indigo-400 to-indigo-600"
+                      :style="{ width: (robustnessScore * 100) + '%' }"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- 评分说明 -->
+                <div class="text-xs text-gray-600 space-y-2">
+                  <p class="font-medium">评分公式：</p>
+                  <ul class="list-disc pl-4 space-y-1">
+                    <li>鲁棒准确率权重 40%</li>
+                    <li>攻击失败率权重 30%</li>
+                    <li>扰动大小权重 20%</li>
+                    <li>查询次数权重 10%</li>
+                  </ul>
+                  <div class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700">
+                    <p>评分≥80: 优秀 | ≥60: 良好 | ≥40: 中等 | ＜40: 较差</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 结果摘要卡片 -->
+            <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-gray-900">指标摘要</h3>
+                <el-tag size="small" type="info">6 项指标</el-tag>
+              </div>
+
+              <div class="space-y-3">
+                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <span class="text-sm text-gray-700">Clean Accuracy</span>
+                  <span class="font-mono text-sm font-bold text-blue-700">{{ (summary.cleanAcc * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                  <span class="text-sm text-gray-700">Robust Accuracy</span>
+                  <span class="font-mono text-sm font-bold text-emerald-700">{{ (summary.robustAcc * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                  <span class="text-sm text-gray-700">Attack Success Rate</span>
+                  <span class="font-mono text-sm font-bold text-red-700">{{ (summary.asr * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <span class="text-sm text-gray-700">平均扰动</span>
+                  <span class="font-mono text-sm font-bold text-purple-700">ε={{ Number(summary.avgEps).toFixed(3) }}</span>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span class="text-sm text-gray-700">总耗时</span>
+                  <span class="font-mono text-sm font-bold text-gray-900">{{ formatTime(summary.totalSeconds) }}</span>
+                </div>
+                <div v-if="summary.avgQueries > 0" class="flex justify-between items-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <span class="text-sm text-gray-700">平均查询</span>
+                  <span class="font-mono text-sm font-bold text-orange-700">{{ summary.avgQueries?.toLocaleString() }}</span>
+                </div>
+              </div>
+
+              <div class="mt-4 flex gap-2">
+                <el-button @click="exportReport" size="small" type="primary" class="flex-1">
+                  <el-icon class="mr-1"><Download /></el-icon>
+                  导出报告
+                </el-button>
+                <el-button @click="showDetailedMetrics" size="small" plain class="flex-1">
+                  <el-icon class="mr-1"><DataAnalysis /></el-icon>
+                  详细分析
+                </el-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 对比分析区域 -->
+          <div class="lg:col-span-2 space-y-6">
+            <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+              <h3 class="font-bold text-gray-900 mb-4">评估完成</h3>
+              <p class="text-gray-600">鲁棒性评估已完成，结果如左侧所示。</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    
+
+    <!-- 样本查看器对话框 -->
+    <el-dialog
+      v-model="sampleModalOpen"
+      title="样本级查看器（Demo）"
+      width="60%"
+    >
+      <div class="text-center text-gray-500">
+        <p>样本查看器功能开发中...</p>
+      </div>
+      <template #footer>
+        <el-button @click="sampleModalOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 操作按钮 -->
     <div class="action-buttons">
-      <el-button @click="$emit('prev')">上一步</el-button>
-      <el-button type="success">完成</el-button>
+      <el-button @click="$emit('prev')">
+        <el-icon class="mr-2"><ArrowLeft /></el-icon>
+        返回：运行控制
+      </el-button>
+      <div class="flex gap-2">
+        <el-button @click="restartEvaluation" plain>
+          <el-icon class="mr-1"><RefreshRight /></el-icon>
+          重新评估
+        </el-button>
+        <el-button @click="exportReport" type="primary">
+          <el-icon class="mr-1"><Download /></el-icon>
+          导出完整报告
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { 
+  Download,
+  View,
+  InfoFilled,
+  ArrowLeft,
+  DataAnalysis,
+  RefreshRight
+} from '@element-plus/icons-vue'
 
 interface Props {
-  task: any
+  taskStatus: string
+  taskData: any
 }
 
 interface Emits {
+  (e: 'restart'): void
   (e: 'prev'): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// 模拟结果数据
-const results = ref({
-  cleanAcc: 95.2,
-  robustAcc: 78.6,
-  asr: 17.5
+// 状态管理
+const sampleModalOpen = ref(false)
+
+// 结果数据
+const summary = ref({
+  cleanAcc: 0.915,
+  robustAcc: 0.687,
+  asr: 0.249,
+  avgEps: 0.031,
+  avgQueries: 0,
+  totalSeconds: 156
 })
 
-const resultTableData = ref([
-  { metric: 'Clean Accuracy', value: '95.2%', description: '原始数据集上的准确率' },
-  { metric: 'Robust Accuracy', value: '78.6%', description: '对抗样本上的准确率' },
-  { metric: 'Attack Success Rate', value: '17.5%', description: '攻击成功率' },
-])
+// 计算属性
+const robustnessScore = computed(() => {
+  const factors = [
+    { value: summary.value.robustAcc, weight: 0.4 },
+    { value: 1 - summary.value.asr, weight: 0.3 },
+    { value: 1 - (summary.value.avgEps / 0.3), weight: 0.2 },
+    { value: 0.7, weight: 0.1 }
+  ]
+  
+  const weightedSum = factors.reduce((sum, f) => sum + (f.value * f.weight), 0)
+  return Math.max(0, Math.min(1, weightedSum))
+})
+
+const robustnessLevel = computed(() => {
+  const score = robustnessScore.value * 100
+  if (score >= 80) return { text: "优秀", type: "success" }
+  if (score >= 60) return { text: "良好", type: "primary" }
+  if (score >= 40) return { text: "中等", type: "warning" }
+  return { text: "较差", type: "danger" }
+})
+
+// 方法
+const openSampleModal = () => {
+  sampleModalOpen.value = true
+}
+
+const exportReport = () => {
+  const report = {
+    summary: summary.value,
+    robustnessScore: robustnessScore.value,
+    level: robustnessLevel.value.text,
+    timestamp: new Date().toISOString()
+  }
+  
+  const json = JSON.stringify(report, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `dqtest-report-${Date.now()}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+  
+  ElMessage.success('评估报告已导出')
+}
+
+const showDetailedMetrics = () => {
+  ElMessage.info('详细分析功能开发中')
+}
+
+const restartEvaluation = async () => {
+  try {
+    await ElMessageBox.confirm('确认要重新开始评估吗？当前结果将被覆盖。', '确认操作', {
+      type: 'warning'
+    })
+    
+    emit('restart')
+    ElMessage.info('正在重新启动评估...')
+  } catch {
+    // 用户取消
+  }
+}
+
+const formatTime = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}秒`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}分钟`
+  return `${Math.round(seconds / 3600)}小时`
+}
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
 .result-dashboard {
   padding: 2rem;
-  
-  .section-header {
-    margin-bottom: 2rem;
-    
-    h3 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin: 0 0 0.5rem 0;
-    }
-    
-    p {
-      color: #6b7280;
-      margin: 0;
-    }
-  }
-  
-  .form-content {
-    margin-bottom: 2rem;
-    
-    .result-stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
-      
-      .stat-card {
-        padding: 1.5rem;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        text-align: center;
-        
-        h4 {
-          margin: 0 0 0.5rem 0;
-          color: #6b7280;
-          font-size: 0.875rem;
-        }
-        
-        .stat-value {
-          margin: 0;
-          font-size: 2rem;
-          font-weight: 600;
-          color: #1f2937;
-        }
-      }
-    }
-    
-    .result-details {
-      margin-bottom: 2rem;
-      
-      h4 {
-        margin: 0 0 1rem 0;
-        font-size: 1rem;
-      }
-    }
-    
-    .export-buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-    }
-  }
-  
-  .action-buttons {
-    display: flex;
-    justify-content: space-between;
-    padding-top: 1rem;
-    border-top: 1px solid #e5e7eb;
-  }
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.section-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.form-content {
+  margin-bottom: 2rem;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Utility classes */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-6 { gap: 1.5rem; }
+.w-5 { width: 1.25rem; }
+.h-5 { height: 1.25rem; }
+.w-7 { width: 1.75rem; }
+.h-7 { height: 1.75rem; }
+.w-10 { width: 2.5rem; }
+.h-10 { height: 2.5rem; }
+.h-3 { height: 0.75rem; }
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-xl { border-radius: 0.75rem; }
+.rounded { border-radius: 0.25rem; }
+.bg-indigo-600 { background-color: rgb(79 70 229); }
+.bg-indigo-50 { background-color: rgb(238 242 255); }
+.bg-gray-50 { background-color: rgb(249 250 251); }
+.bg-gray-200 { background-color: rgb(229 231 235); }
+.bg-white { background-color: rgb(255 255 255); }
+.bg-blue-50 { background-color: rgb(239 246 255); }
+.bg-emerald-50 { background-color: rgb(236 253 245); }
+.bg-red-50 { background-color: rgb(254 242 242); }
+.bg-purple-50 { background-color: rgb(250 245 255); }
+.bg-orange-50 { background-color: rgb(255 247 237); }
+.text-white { color: rgb(255 255 255); }
+.text-gray-900 { color: rgb(17 24 39); }
+.text-gray-700 { color: rgb(55 65 81); }
+.text-gray-600 { color: rgb(75 85 99); }
+.text-gray-500 { color: rgb(107 114 128); }
+.text-indigo-600 { color: rgb(79 70 229); }
+.text-blue-700 { color: rgb(29 78 216); }
+.text-emerald-700 { color: rgb(4 120 87); }
+.text-red-700 { color: rgb(185 28 28); }
+.text-purple-700 { color: rgb(126 34 206); }
+.text-orange-700 { color: rgb(194 65 12); }
+.text-blue-700 { color: rgb(29 78 216); }
+.text-sm { font-size: 0.875rem; }
+.text-xs { font-size: 0.75rem; }
+.font-bold { font-weight: 700; }
+.font-semibold { font-weight: 600; }
+.font-medium { font-weight: 500; }
+.font-mono { font-family: ui-monospace, SFMono-Regular, monospace; }
+.shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+.shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+.border { border-width: 1px; }
+.border-gray-200 { border-color: rgb(229 231 235); }
+.border-blue-200 { border-color: rgb(191 219 254); }
+.border-emerald-200 { border-color: rgb(167 243 208); }
+.border-red-200 { border-color: rgb(254 202 202); }
+.border-purple-200 { border-color: rgb(221 214 254); }
+.border-orange-200 { border-color: rgb(254 215 170); }
+.p-2 { padding: 0.5rem; }
+.p-3 { padding: 0.75rem; }
+.p-6 { padding: 1.5rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+.mr-1 { margin-right: 0.25rem; }
+.mr-2 { margin-right: 0.5rem; }
+.space-y-1 > * + * { margin-top: 0.25rem; }
+.space-y-2 > * + * { margin-top: 0.5rem; }
+.space-y-3 > * + * { margin-top: 0.75rem; }
+.space-y-4 > * + * { margin-top: 1rem; }
+.space-y-6 > * + * { margin-top: 1.5rem; }
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.text-center { text-align: center; }
+.overflow-hidden { overflow: hidden; }
+.flex-1 { flex: 1 1 0%; }
+.w-full { width: 100%; }
+.list-disc { list-style-type: disc; }
+.pl-4 { padding-left: 1rem; }
+.transition-all { transition-property: all; }
+.duration-1000 { transition-duration: 1000ms; }
+
+/* 渐变 */
+.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
+.bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
+.from-indigo-50 { --tw-gradient-from: rgb(238 242 255); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(238 242 255 / 0)); }
+.from-indigo-400 { --tw-gradient-from: rgb(129 140 248); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(129 140 248 / 0)); }
+.to-white { --tw-gradient-to: rgb(255 255 255); }
+.to-indigo-600 { --tw-gradient-to: rgb(79 70 229); }
+
+/* 响应式 */
+@media (min-width: 1024px) {
+  .lg\:col-span-1 { grid-column: span 1 / span 1; }
+  .lg\:col-span-2 { grid-column: span 2 / span 2; }
+  .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>

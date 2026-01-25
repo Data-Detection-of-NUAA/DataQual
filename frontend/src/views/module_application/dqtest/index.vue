@@ -1,139 +1,142 @@
 <template>
-  <div class="dqtest-container">
-    <!-- 顶部导航 -->
-    <div class="header-section">
-      <el-breadcrumb>
-        <el-breadcrumb-item to="/">首页</el-breadcrumb-item>
-        <el-breadcrumb-item>DqTest - 鲁棒性评估平台</el-breadcrumb-item>
-      </el-breadcrumb>
-      
-      <div class="header-content">
-        <div class="title-section">
-          <h1>DqTest - 多模态鲁棒性评估平台</h1>
-          <p>数据集/模型联动 · 鲁棒性评估策略选择 · 参数配置 · 鲁棒指标展示</p>
-        </div>
-        
-        <div class="action-buttons">
-          <el-button @click="exportDqtestConfig" type="info" plain>
-            <template #icon>
-              <el-icon><Download /></el-icon>
-            </template>
-            导出DqTest配置
-          </el-button>
-          <el-button @click="startDqtestEvaluation" type="danger" :loading="isDqtestRunning">
-            <template #icon>
-              <el-icon><VideoPlay /></el-icon>
-            </template>
-            启动DqTest评估
-          </el-button>
+  <div class="dqtest-page">
+    <!-- 顶部进度指示器 -->
+    <div class="sticky top-0 z-10">
+      <div class="bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm px-6 py-4">
+        <div class="max-w-7xl mx-auto">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">DqTest 鲁棒性评估平台</h1>
+              <p class="text-sm text-gray-500 mt-1">多模态深度学习模型鲁棒性评估与测试平台</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <el-tag :type="getTaskStatusType()" size="small">{{ getTaskStatusText() }}</el-tag>
+            </div>
+          </div>
+          
+          <!-- 步骤指示器 - 可点击导航 -->
+          <div class="flex items-center justify-between">
+            <div 
+              v-for="(step, index) in steps" 
+              :key="step.id"
+              class="flex items-center"
+            >
+              <div 
+                @click="navigateToStep(index + 1)"
+                :class="[
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer',
+                  currentStep === index + 1
+                    ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border-indigo-200'
+                    : currentStep > index + 1
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                ]"
+              >
+                <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow">
+                  {{ index + 1 }}
+                </span>
+                <el-icon>
+                  <component :is="step.icon" />
+                </el-icon>
+                <span>{{ step.title }}</span>
+              </div>
+              
+              <!-- 连接线 -->
+              <div 
+                v-if="index < steps.length - 1" 
+                :class="[
+                  'h-px w-8 mx-2',
+                  currentStep > index + 1 ? 'bg-emerald-300' : 'bg-gray-300'
+                ]"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Tab导航 -->
-    <div class="tab-navigation">
-      <el-tabs v-model="activeDqtestTab" @tab-click="handleDqtestTabClick">
-        <el-tab-pane 
-          v-for="(tab, index) in dqtestTabs" 
-          :key="tab.id"
-          :label="tab.title"
-          :name="tab.id"
-        >
-          <template #label>
-            <div class="tab-label">
-              <span class="step-number">{{ index + 1 }}</span>
-              <el-icon><component :is="tab.icon" /></el-icon>
-              <span>{{ tab.title }}</span>
-            </div>
-          </template>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+    <!-- 主内容区域 -->
+    <div class="max-w-7xl mx-auto px-6 py-8">
+      <!-- 第1步：数据集选择 -->
+      <DatasetSelector
+        v-if="currentStep === 1"
+        v-model="taskData.dataset"
+        @next="currentStep = 2"
+      />
 
-    <!-- 内容区域 -->
-    <div class="content-area">
-      <el-card shadow="never">
-        <transition name="fade" mode="out-in">
-          <!-- 数据集选择 -->
-          <DatasetSelector 
-            v-if="activeDqtestTab === 'dataset'"
-            v-model="dqtestFormData.dataset"
-            @next="switchToDqtestTab('model')"
-          />
-          
-          <!-- 模型选择与训练 -->
-          <ModelTrainer 
-            v-else-if="activeDqtestTab === 'model'"
-            v-model="dqtestFormData.model"
-            :dataset="dqtestFormData.dataset"
-            @prev="switchToDqtestTab('dataset')"
-            @next="switchToDqtestTab('strategy')"
-          />
-          
-          <!-- 策略选择 -->
-          <StrategySelector 
-            v-else-if="activeDqtestTab === 'strategy'"
-            v-model="dqtestFormData.strategy"
-            @prev="switchToDqtestTab('model')"
-            @next="switchToDqtestTab('params')"
-          />
-          
-          <!-- 参数配置 -->
-          <ParameterConfig 
-            v-else-if="activeDqtestTab === 'params'"
-            v-model="dqtestFormData.parameters"
-            :strategy="dqtestFormData.strategy"
-            @prev="switchToDqtestTab('strategy')"
-            @next="switchToDqtestTab('metrics')"
-          />
-          
-          <!-- 指标与输出 -->
-          <MetricsConfig 
-            v-else-if="activeDqtestTab === 'metrics'"
-            v-model="dqtestFormData.metrics"
-            @prev="switchToDqtestTab('params')"
-            @next="switchToDqtestTab('run')"
-          />
-          
-          <!-- 运行控制 -->
-          <RunControl 
-            v-else-if="activeDqtestTab === 'run'"
-            :task-data="dqtestFormData"
-            :is-running="isDqtestRunning"
-            @start="handleStartDqtestTask"
-            @pause="handlePauseDqtestTask" 
-            @stop="handleStopDqtestTask"
-            @prev="switchToDqtestTab('metrics')"
-            @next="switchToDqtestTab('results')"
-          />
-          
-          <!-- 结果总览 -->
-          <ResultDashboard 
-            v-else-if="activeDqtestTab === 'results'"
-            :task="currentDqtestTask"
-            @prev="switchToDqtestTab('run')"
-          />
-        </transition>
-      </el-card>
+      <!-- 第2步：模型训练 -->
+      <ModelTrainer
+        v-else-if="currentStep === 2"
+        v-model="taskData.model"
+        :dataset="taskData.dataset"
+        @prev="currentStep = 1"
+        @next="currentStep = 3"
+      />
+
+      <!-- 第3步：策略选择 -->
+      <StrategySelector
+        v-else-if="currentStep === 3"
+        v-model="taskData.strategy"
+        @prev="currentStep = 2"
+        @next="currentStep = 4"
+      />
+
+      <!-- 第4步：参数配置 -->
+      <ParameterConfig
+        v-else-if="currentStep === 4"
+        v-model="taskData.parameters"
+        :strategy="taskData.strategy"
+        @prev="currentStep = 3"
+        @next="currentStep = 5"
+      />
+
+      <!-- 第5步：指标与输出 -->
+      <MetricsConfig
+        v-else-if="currentStep === 5"
+        v-model="taskData.metrics"
+        @prev="currentStep = 4"
+        @next="currentStep = 6"
+      />
+
+      <!-- 第6步：运行控制 -->
+      <RunControl
+        v-else-if="currentStep === 6"
+        :task-data="taskData"
+        :is-running="isTaskRunning"
+        @start="handleTaskStart"
+        @pause="handleTaskPause"
+        @resume="handleTaskResume"
+        @stop="handleTaskStop"
+        @prev="currentStep = 5"
+        @next="currentStep = 7"
+      />
+
+      <!-- 第7步：结果总览 -->
+      <ResultDashboard
+        v-else-if="currentStep === 7"
+        :task-status="taskStatus"
+        :task-data="taskData"
+        @restart="handleRestart"
+        @prev="currentStep = 6"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Download, 
-  VideoPlay, 
-  Database,
+import { ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import {
+  Folder,
   Cpu,
   Operation,
   Setting,
   PieChart,
-  DataAnalysis
+  DataAnalysis,
+  TrendCharts
 } from '@element-plus/icons-vue'
 
-// 导入子组件
+// 组件导入 - 使用正确的组件名称
 import DatasetSelector from './components/DatasetSelector.vue'
 import ModelTrainer from './components/ModelTrainer.vue'
 import StrategySelector from './components/StrategySelector.vue'
@@ -142,239 +145,206 @@ import MetricsConfig from './components/MetricsConfig.vue'
 import RunControl from './components/RunControl.vue'
 import ResultDashboard from './components/ResultDashboard.vue'
 
-// 🚨 暂时注释掉API导入，避免加载错误
-// import { DqtestApi } from '@/api/module_application/dqtest'
-
-// 页面状态
-const activeDqtestTab = ref('dataset')
-const isDqtestRunning = ref(false)
-const currentDqtestTask = ref(null)
-
-// DqTest Tab配置
-const dqtestTabs = [
-  { id: 'dataset', title: '数据集选择', icon: 'Database' },
-  { id: 'model', title: '模型选择与训练', icon: 'Cpu' },
+// 步骤配置
+const steps = [
+  { id: 'dataset', title: '数据集选择', icon: 'Folder' },
+  { id: 'model', title: '模型训练', icon: 'Cpu' },
   { id: 'strategy', title: '策略选择', icon: 'Operation' },
   { id: 'params', title: '参数配置', icon: 'Setting' },
-  { id: 'metrics', title: '指标与输出', icon: 'PieChart' },
-  { id: 'run', title: '运行控制', icon: 'VideoPlay' },
-  { id: 'results', title: '结果总览', icon: 'DataAnalysis' },
+  { id: 'metrics', title: '指标输出', icon: 'PieChart' },
+  { id: 'run', title: '运行控制', icon: 'DataAnalysis' },
+  { id: 'results', title: '结果总览', icon: 'TrendCharts' }
 ]
 
-// DqTest表单数据
-const dqtestFormData = reactive({
+// 状态管理
+const currentStep = ref(1)
+const taskStatus = ref<'idle' | 'running' | 'paused' | 'completed' | 'failed'>('idle')
+const isTaskRunning = ref(false)
+
+// 任务数据
+const taskData = ref({
   dataset: {
-    modality: 'image',
     datasetId: '',
-    uploadedFile: null,
     name: '',
-    stats: {}
+    uploadedFile: null
   },
   model: {
     modelId: '',
-    trainingConfig: {},
-    trainedModel: null
+    trainingCompleted: false,
+    generatedModel: null
   },
   strategy: {
-    mode: 'attack', // 'attack' or 'external_dataset'
+    mode: 'attack', // 'attack' | 'external_dataset'
     threatModel: 'whitebox',
     attacks: [],
-    externalDataset: null
+    externalDataset: {
+      loaded: false,
+      name: '',
+      size: 0,
+      stats: {}
+    }
   },
-  parameters: {},
+  parameters: {
+    // 攻击参数或外部数据集参数
+  },
   metrics: {
     selected: ['clean_acc', 'robust_acc', 'asr'],
     outputs: {
       save_adv: true,
       export_csv: true,
       export_json: true
-    }
+    },
+    topK: 5,
+    confidenceThreshold: 0.5
+  },
+  results: {
+    summary: {},
+    history: [],
+    completed: false
   }
 })
 
-// 方法
-const switchToDqtestTab = (tabId: string) => {
-  activeDqtestTab.value = tabId
-}
-
-const handleDqtestTabClick = (tab: any) => {
-  // 可以在这里添加tab切换的验证逻辑
-}
-
-const startDqtestEvaluation = async () => {
-  // 快速验证并跳转到运行控制tab
-  if (validateDqtestBasicForm()) {
-    activeDqtestTab.value = 'run'
-    await handleStartDqtestTask()
+// 计算属性
+const getTaskStatusType = () => {
+  const statusTypes: Record<string, string> = {
+    idle: 'info',
+    running: 'success',
+    paused: 'warning',
+    completed: 'success',
+    failed: 'danger'
   }
+  return statusTypes[taskStatus.value] || 'info'
 }
 
-const validateDqtestBasicForm = (): boolean => {
-  if (!dqtestFormData.dataset.datasetId && !dqtestFormData.dataset.uploadedFile) {
-    ElMessage.error('请选择DqTest数据集')
-    activeDqtestTab.value = 'dataset'
-    return false
+const getTaskStatusText = () => {
+  const statusTexts: Record<string, string> = {
+    idle: '就绪',
+    running: '运行中',
+    paused: '已暂停',
+    completed: '已完成',
+    failed: '失败'
   }
+  return statusTexts[taskStatus.value] || '未知'
+}
+
+// 导航方法
+const navigateToStep = (stepNumber: number) => {
+  // 允许用户点击任何步骤进行导航
+  currentStep.value = stepNumber
+  ElMessage.info(`切换到步骤${stepNumber}：${steps[stepNumber - 1].title}`)
+}
+
+// 任务控制方法
+const handleTaskStart = () => {
+  taskStatus.value = 'running'
+  isTaskRunning.value = true
+  ElMessage.success('DqTest评估任务已启动')
+}
+
+const handleTaskPause = () => {
+  taskStatus.value = 'paused'
+  isTaskRunning.value = false
+  ElMessage.warning('任务已暂停')
+}
+
+const handleTaskResume = () => {
+  taskStatus.value = 'running'
+  isTaskRunning.value = true
+  ElMessage.info('任务已继续')
+}
+
+const handleTaskStop = () => {
+  taskStatus.value = 'failed'
+  isTaskRunning.value = false
+  ElMessage.error('任务已停止')
+}
+
+const handleRestart = () => {
+  taskStatus.value = 'idle'
+  isTaskRunning.value = false
+  currentStep.value = 1
   
-  if (!dqtestFormData.model.modelId) {
-    ElMessage.error('请选择或训练DqTest模型')
-    activeDqtestTab.value = 'model'
-    return false
-  }
+  // 重置部分数据
+  taskData.value.results.completed = false
   
-  return true
+  ElMessage.info('正在重新开始评估流程')
 }
-
-const handleStartDqtestTask = async () => {
-  try {
-    isDqtestRunning.value = true
-    
-    // 🚨 暂时注释掉API调用
-    /*
-    const dqtestTaskConfig = {
-      name: `DqTest评估-${new Date().toLocaleString()}`,
-      ...dqtestFormData
-    }
-    
-    const response = await DqtestApi.createTask(dqtestTaskConfig)
-    currentDqtestTask.value = response.data
-    */
-    
-    ElMessage.success('DqTest评估任务已启动（演示模式）')
-    
-  } catch (error: any) {
-    ElMessage.error(error.message || 'DqTest任务启动失败')
-    isDqtestRunning.value = false
-  }
-}
-
-const handlePauseDqtestTask = () => {
-  ElMessage.info('DqTest暂停功能开发中')
-}
-
-const handleStopDqtestTask = async () => {
-  try {
-    await ElMessageBox.confirm('确认要停止当前DqTest任务吗？', '确认操作', {
-      type: 'warning'
-    })
-    
-    isDqtestRunning.value = false
-    ElMessage.success('DqTest任务已停止')
-  } catch {
-    // 用户取消
-  }
-}
-
-const exportDqtestConfig = () => {
-  const config = JSON.stringify(dqtestFormData, null, 2)
-  const blob = new Blob([config], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'dqtest-config.json'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  
-  ElMessage.success('DqTest配置已导出')
-}
-
-onMounted(() => {
-  // DqTest初始化操作
-  console.log('DqTest页面已加载')
-})
 </script>
 
 <style lang="scss" scoped>
-.dqtest-container {
-  min-height: calc(100vh - 84px);
-  background-color: #f8fafc;
+.dqtest-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   
-  .header-section {
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-    padding: 1.5rem 2rem;
-    
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 1rem;
-      
-      .title-section {
-        h1 {
-          font-size: 1.875rem;
-          font-weight: 700;
-          color: #111827;
-          margin: 0 0 0.5rem 0;
-        }
-        
-        p {
-          color: #6b7280;
-          margin: 0;
-        }
-      }
-      
-      .action-buttons {
-        display: flex;
-        gap: 0.75rem;
-      }
-    }
+  .sticky {
+    position: sticky;
   }
   
-  .tab-navigation {
-    background: white;
-    padding: 0 2rem;
-    border-bottom: 1px solid #e5e7eb;
-    
-    :deep(.el-tabs__header) {
-      margin: 0;
-    }
-    
-    .tab-label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      
-      .step-number {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.5rem;
-        height: 1.5rem;
-        background: #f3f4f6;
-        color: #6b7280;
-        border-radius: 0.375rem;
-        font-size: 0.75rem;
-        font-weight: 600;
-      }
-    }
-    
-    :deep(.el-tabs__item.is-active) {
-      .step-number {
-        background: #4f46e5;
-        color: white;
-      }
-    }
+  .top-0 {
+    top: 0;
   }
   
-  .content-area {
-    padding: 2rem;
-    
-    :deep(.el-card__body) {
-      padding: 0;
-    }
+  .z-10 {
+    z-index: 10;
+  }
+  
+  .backdrop-blur-md {
+    backdrop-filter: blur(12px);
   }
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
+// Tailwind-like utility classes
+.max-w-7xl { max-width: 80rem; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+.py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mt-1 { margin-top: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.text-2xl { font-size: 1.5rem; }
+.text-sm { font-size: 0.875rem; }
+.text-xs { font-size: 0.75rem; }
+.font-bold { font-weight: 700; }
+.font-medium { font-weight: 500; }
+.text-gray-900 { color: rgb(17 24 39); }
+.text-gray-600 { color: rgb(75 85 99); }
+.text-gray-500 { color: rgb(107 114 128); }
+.text-indigo-700 { color: rgb(67 56 202); }
+.text-emerald-700 { color: rgb(4 120 87); }
+.text-white { color: rgb(255 255 255); }
+.bg-white { background-color: rgb(255 255 255); }
+.bg-indigo-600 { background-color: rgb(79 70 229); }
+.bg-emerald-50 { background-color: rgb(236 253 245); }
+.bg-emerald-300 { background-color: rgb(110 231 183); }
+.bg-gray-300 { background-color: rgb(209 213 219); }
+.border { border-width: 1px; }
+.border-b { border-bottom-width: 1px; }
+.border-gray-200 { border-color: rgb(229 231 235); }
+.border-indigo-200 { border-color: rgb(199 210 254); }
+.border-emerald-200 { border-color: rgb(187 247 208); }
+.rounded-lg { border-radius: 0.5rem; }
+.shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+.shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); }
+.w-6 { width: 1.5rem; }
+.h-6 { height: 1.5rem; }
+.h-px { height: 1px; }
+.w-8 { width: 2rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
+.transition-colors { transition-property: color, background-color, border-color; }
+.cursor-pointer { cursor: pointer; }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+// 悬停效果
+.hover\:bg-emerald-100:hover { background-color: rgb(220 252 231); }
+.hover\:bg-gray-50:hover { background-color: rgb(249 250 251); }
+
+// 渐变背景
+.bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
+.from-indigo-50 { --tw-gradient-from: #eef2ff; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(238 242 255 / 0)); }
+.to-purple-50 { --tw-gradient-to: #faf5ff; }
 </style>
