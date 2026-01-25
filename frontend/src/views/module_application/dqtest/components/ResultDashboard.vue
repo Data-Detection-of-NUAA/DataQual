@@ -145,6 +145,87 @@
             </div>
           </div>
         </div>
+
+        <!-- 评估历史 -->
+        <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-900">评估历史</h3>
+            <el-tag size="small" type="info">{{ history.length }} 条记录</el-tag>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b border-gray-200">
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">任务ID</th>
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">数据集</th>
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">模型</th>
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">攻击方法</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">ASR</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">鲁棒准确率</th>
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">时间</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">状态</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in history" :key="item.id" class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td class="py-3 px-4">
+                    <span class="font-mono text-xs text-indigo-600 font-medium">{{ item.id }}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="text-sm text-gray-900">{{ item.dataset }}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="text-sm text-gray-700">{{ item.model }}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="text-xs text-gray-600">{{ item.attacks }}</span>
+                  </td>
+                  <td class="py-3 px-4 text-center">
+                    <span class="font-mono text-sm font-bold text-red-700">{{ (item.asr * 100).toFixed(1) }}%</span>
+                  </td>
+                  <td class="py-3 px-4 text-center">
+                    <span class="font-mono text-sm font-bold text-emerald-700">{{ (item.robustAcc * 100).toFixed(1) }}%</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="text-xs text-gray-500">{{ item.time }}</span>
+                  </td>
+                  <td class="py-3 px-4 text-center">
+                    <el-tag size="small" :type="item.status === '完成' ? 'success' : 'info'">{{ item.status }}</el-tag>
+                  </td>
+                  <td class="py-3 px-4 text-center">
+                    <div class="flex gap-2 justify-center">
+                      <el-button size="small" text type="primary">
+                        <el-icon class="mr-1"><View /></el-icon>
+                        查看
+                      </el-button>
+                      <el-button size="small" text type="info">
+                        <el-icon class="mr-1"><Download /></el-icon>
+                        导出
+                      </el-button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-4 flex justify-between items-center">
+            <div class="text-sm text-gray-500">
+              显示 {{ history.length }} 条记录
+            </div>
+            <div class="flex gap-2">
+              <el-button size="small" plain>
+                <el-icon class="mr-1"><RefreshRight /></el-icon>
+                刷新
+              </el-button>
+              <el-button size="small" plain>
+                查看全部历史
+              </el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -219,6 +300,13 @@ const summary = ref({
   avgQueries: 0,
   totalSeconds: 156
 })
+
+// 评估历史
+const history = ref([
+  { id: "JOB-2026-0018", dataset: "CIFAR-10", model: "ResNet-18", attacks: "PGD, FGSM", asr: 0.248, robustAcc: 0.684, time: "2分钟前", status: "完成" },
+  { id: "JOB-2026-0017", dataset: "AG News", model: "BERT-Base", attacks: "TextFooler", asr: 0.312, robustAcc: 0.721, time: "1小时前", status: "完成" },
+  { id: "JOB-2026-0016", dataset: "ImageNet-Mini", model: "ResNet-50", attacks: "CW, PGD", asr: 0.421, robustAcc: 0.601, time: "3小时前", status: "完成" }
+])
 
 // 计算属性
 const robustnessScore = computed(() => {
