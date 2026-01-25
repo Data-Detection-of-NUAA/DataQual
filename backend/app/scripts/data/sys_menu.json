@@ -2649,5 +2649,45 @@
         ]
       }
     ]
+  },
+  {
+    "name": "数据优化",
+    "type": 1,
+    "icon": "el-icon-Histogram",
+    "order": 8,
+    "permission": null,
+    "route_name": "DataOptimizer",
+    "route_path": "/optimizer",
+    "component_path": null,
+    "status": "0",
+    "keep_alive": true,
+    "hidden": false,
+    "always_show": true,
+    "title": "数据优化",
+    "params": null,
+    "affix": false,
+    "redirect": "/optimizer/dqscan",
+    "description": "数据集优化工具",
+    "children": [
+      {
+        "name": "数据集缺陷优化",
+        "type": 2,
+        "icon": "DataAnalysis",
+        "order": 1,
+        "permission": "optimizer:dqscan:query",
+        "route_name": "DatasetSelect",
+        "route_path": "/optimizer/dataset-select",
+        "component_path": "dqscan/DatasetSelect",
+        "status": "0",
+        "keep_alive": true,
+        "hidden": false,
+        "always_show": false,
+        "title": "数据集缺陷优化",
+        "params": null,
+        "affix": false,
+        "redirect": null,
+        "description": "数据集缺陷诊断与优化"
+      }
+    ]
   }
 ]

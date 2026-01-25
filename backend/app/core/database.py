@@ -102,8 +102,44 @@ async def create_tables() -> None:
 
 async def drop_tables() -> None:
     """删除数据库表"""
+    from sqlalchemy import text, inspect
     async with async_engine.begin() as conn:
-        await conn.run_sync(MappedBase.metadata.drop_all)
+        if settings.DATABASE_TYPE == 'mysql':
+            # MySQL: 直接用 SQL 删除所有表
+            # 1. 禁用外键检查
+            await conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+
+            # 2. 获取所有表名
+            result = await conn.execute(text("SHOW TABLES"))
+            tables = [row[0] for row in result]
+
+            # 3. 删除所有表
+            for table_name in tables:
+                await conn.execute(text(f"DROP TABLE IF EXISTS `{table_name}`"))
+
+            # 4. 恢复外键检查
+            await conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+
+        elif settings.DATABASE_TYPE == 'postgres':
+            # PostgreSQL: 使用 CASCADE 删除
+            result = await conn.execute(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ))
+            tables = [row[0] for row in result]
+            for table_name in tables:
+                await conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}" CASCADE'))
+
+        elif settings.DATABASE_TYPE == 'sqlite':
+            # SQLite: 获取所有表并删除
+            result = await conn.execute(text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ))
+            tables = [row[0] for row in result]
+            for table_name in tables:
+                await conn.execute(text(f"DROP TABLE IF EXISTS `{table_name}`"))
+        else:
+            # 其他数据库使用默认方法
+            await conn.run_sync(MappedBase.metadata.drop_all)
 
 async def redis_connect(app: FastAPI, status: str) -> Redis | None:
     """
