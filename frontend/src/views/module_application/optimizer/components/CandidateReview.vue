@@ -172,7 +172,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Microphone, Document, VideoPlay, Picture, Headset } from '@element-plus/icons-vue';
-import OptimizerAPI from '@/api/module_optimizer/optimizer';
+import OptimizerAPI from '@/api/module_application/optimizer';
 import type { AugmentationPlan } from '@/types/optimizer';
 import { getDataTypeLabel, getDataTypeColor } from '@/utils/dataTypeUtils';
 

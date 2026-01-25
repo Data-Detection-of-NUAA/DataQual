@@ -69,7 +69,7 @@ import {
   ArrowRight
 } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
-import OptimizerAPI from '@/api/module_optimizer/optimizer';
+import OptimizerAPI from '@/api/module_application/optimizer';
 import type { DatasetInfo, ModelEvaluationDetail, CategoryAP } from '@/types/optimizer';
 import { getDataTypeLabel, getDataTypeColor } from '@/utils/dataTypeUtils';
 

@@ -100,7 +100,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import OptimizerAPI from '@/api/module_optimizer/optimizer';
+import OptimizerAPI from '@/api/module_application/optimizer';
 import type { DefectFeature } from '@/types/optimizer';
 import { getDataTypeLabel, getDataTypeColor, getDefectTypeColor, getDefectTypeName } from '@/utils/dataTypeUtils';
 import DefectStrategyForm from './DefectStrategyForm.vue';

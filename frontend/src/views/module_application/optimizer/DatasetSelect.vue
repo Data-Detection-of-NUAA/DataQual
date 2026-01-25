@@ -99,7 +99,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Search } from '@element-plus/icons-vue';
-import OptimizerAPI from '@/api/module_optimizer/optimizer';
+import OptimizerAPI from '@/api/module_application/optimizer';
 import type { DatasetInfo } from '@/types/optimizer';
 import { getDataTypeLabel, getDataTypeColor } from '@/utils/dataTypeUtils';
 
@@ -279,9 +279,9 @@ const handleSelectDataset = (dataset: DatasetInfo) => {
     return;
   }
 
-  // 跳转到诊断页面,携带数据集 ID
+  // 跳转到优化器页面,携带数据集 ID
   router.push({
-    name: 'DQScan',
+    name: 'Optimizer',
     query: { datasetId: dataset.id }
   });
 };

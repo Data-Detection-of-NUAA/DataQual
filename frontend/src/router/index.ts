@@ -76,13 +76,25 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: "dataset-select",
         name: "DatasetSelect",
         meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
-        component: () => import("@/views/dqscan/DatasetSelect.vue"),
+        component: () => import("@/views/module_application/optimizer/DatasetSelect.vue"),
       },
       {
-        path: "dqscan",
-        name: "DQScan",
+        path: "optimizer",
+        name: "Optimizer",
         meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
-        component: () => import("@/views/dqscan/index.vue"),
+        component: () => import("@/views/module_application/optimizer/index.vue"),
+      },
+      {
+        path: "optimizer/index",
+        name: "OptimizerIndex",
+        meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
+        component: () => import("@/views/module_application/optimizer/index.vue"),
+      },
+      {
+        path: "optimizer/dataset-select",
+        name: "OptimizerDatasetSelect",
+        meta: { title: "数据集缺陷优化", icon: "DataAnalysis", hidden: true },
+        component: () => import("@/views/module_application/optimizer/DatasetSelect.vue"),
       },
       // 应用内部打开页面
       {
