@@ -21,8 +21,8 @@
               :key="step.id"
               @click="navigateToStep(index + 1)"
               :class="[
-                'flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer',
-                'border-2 w-44 justify-start',
+                'flex items-center gap-2 px-3 py-3 rounded-xl transition-all cursor-pointer',
+                'border-2 w-48 justify-start',
                 currentStep === index + 1
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200'
                   : currentStep > index + 1
@@ -144,13 +144,13 @@ import ResultDashboard from './components/ResultDashboard.vue'
 
 // 步骤配置
 const steps = [
-  { id: 'dataset', title: '数据集选择', icon: 'Folder' },
-  { id: 'model', title: '模型选择与训练', icon: 'Cpu' },
-  { id: 'strategy', title: '鲁棒性评估策略选择', icon: 'Operation' },
-  { id: 'params', title: '参数配置', icon: 'Setting' },
-  { id: 'metrics', title: '指标与输出', icon: 'PieChart' },
-  { id: 'run', title: '运行控制', icon: 'DataAnalysis' },
-  { id: 'results', title: '结果总览', icon: 'TrendCharts' }
+  { id: 'dataset', title: '数据集选择', icon: Folder },
+  { id: 'model', title: '模型选择与训练', icon: Cpu },
+  { id: 'strategy', title: '对抗策略选择', icon: Operation },
+  { id: 'params', title: '对抗参数选择', icon: Setting },
+  { id: 'metrics', title: '评估方法配置', icon: PieChart },
+  { id: 'run', title: '评估运行控制', icon: DataAnalysis },
+  { id: 'results', title: '结果总览', icon: TrendCharts }
 ]
 
 // 状态管理
@@ -161,14 +161,26 @@ const isTaskRunning = ref(false)
 // 任务数据
 const taskData = ref({
   dataset: {
-    datasetId: '',
+    datasetId: null,
     name: '',
-    uploadedFile: null
+    modality: '',
+    task: '',
+    sampleCount: 0,
+    classCount: 0,
+    fileSize: 0
   },
   model: {
-    modelId: '',
-    trainingCompleted: false,
-    generatedModel: null
+    modelId: null,
+    trainingConfig: {
+      trainingEpochs: 10,
+      batchSize: 32,
+      learningRate: 0.001,
+      optimizer: 'Adam',
+      lossFunction: 'CrossEntropyLoss',
+      scheduler: 'StepLR',
+      weightDecay: 0.0001,
+      momentum: 0.9
+    }
   },
   strategy: {
     mode: 'attack', // 'attack' | 'external_dataset'

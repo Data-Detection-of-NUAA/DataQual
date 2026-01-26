@@ -118,6 +118,7 @@ declare module 'vue' {
     MenuSearch: typeof import('./../components/MenuSearch/index.vue')['default']
     MetricsConfig: typeof import('./../views/module_application/dqtest/components/MetricsConfig.vue')['default']
     MixTopMenu: typeof import('./../layouts/components/Menu/MixTopMenu.vue')['default']
+    ModelRecommendation: typeof import('./../views/module_application/dqtest/components/ModelRecommendation.vue')['default']
     ModelTrainer: typeof import('./../views/module_application/dqtest/components/ModelTrainer.vue')['default']
     NavBar: typeof import('./../layouts/components/NavBar/index.vue')['default']
     NavbarActions: typeof import('./../layouts/components/NavBar/components/NavbarActions.vue')['default']

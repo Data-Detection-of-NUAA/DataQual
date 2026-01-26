@@ -1,496 +1,287 @@
 <template>
   <div class="model-trainer">
-    <div class="section-header">
-      <div class="flex items-center gap-3">
-        <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">2</span>
-        <div>
-          <h3 class="font-bold text-gray-900">模型选择与训练</h3>
-          <p class="text-sm text-gray-500 mt-1">基于已选择的数据集进行模型选择和训练</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2 text-xs text-gray-500">
-        <el-icon><Monitor /></el-icon>
-        <span>Model Panel</span>
-      </div>
-    </div>
+    <!-- 如果没有选择数据集，显示提示 -->
+    <el-empty v-if="!dataset || !dataset.datasetId" description="请先在步骤1中选择数据集">
+      <el-button type="primary" @click="$emit('prev')">返回选择数据集</el-button>
+    </el-empty>
 
-    <!-- 数据集信息展示 -->
-    <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <div>
-          <div class="font-medium text-gray-900">当前数据集</div>
-          <div class="text-sm text-gray-600 mt-1">
-            {{ dataset.name || '未选择' }} · {{ dataset.modality || 'image' }} · {{ dataset.task || 'classification' }}
-          </div>
-        </div>
-        <el-tag :type="dataset.uploadedFile ? 'success' : 'info'" size="small">
-          {{ dataset.uploadedFile ? '自定义数据集' : '预置数据集' }}
-        </el-tag>
+    <!-- 模型推荐区域 -->
+    <div v-else class="model-recommendation">
+      <!-- 加载状态 -->
+      <div v-if="loading" class="loading-container">
+        <el-icon class="is-loading" :size="40">
+          <Loading />
+        </el-icon>
+        <p>正在分析数据集并推荐合适的模型...</p>
       </div>
-      <div v-if="dataset.uploadedFile" class="text-xs text-gray-600">
-        文件：{{ dataset.uploadedFile.name }} · {{ formatFileSize(dataset.uploadedFile.size) }}
-      </div>
-    </div>
 
-    <!-- 推荐模型表格 -->
-    <div class="mb-8">
-      <h4 class="font-bold text-gray-900 mb-4">推荐模型</h4>
-      <div class="overflow-hidden border border-gray-200 rounded-xl">
-        <el-table 
-          :data="recommendedModels" 
-          style="width: 100%" 
-          @row-click="selectTrainModel"
-          class="model-table"
+      <!-- 推荐结果 -->
+      <div v-else-if="recommendations.length > 0" class="recommendation-results">
+        <!-- 数据集信息摘要 -->
+        <el-alert
+          :title="`基于数据集 &quot;${datasetInfo?.name}&quot; 的推荐结果`"
+          type="info"
+          :closable="false"
+          class="dataset-summary"
         >
-          <el-table-column width="80">
+          <template #default>
+            <div class="dataset-meta">
+              <el-tag type="primary" size="small">
+                {{ getModalityText(datasetInfo?.modality) }}
+              </el-tag>
+              <el-tag type="success" size="small">
+                {{ getTaskTypeText(datasetInfo?.task_type) }}
+              </el-tag>
+              <span v-if="datasetInfo?.sample_count" class="meta-item">
+                样本数: {{ datasetInfo.sample_count }}
+              </span>
+              <span v-if="datasetInfo?.class_count" class="meta-item">
+                类别数: {{ datasetInfo.class_count }}
+              </span>
+            </div>
+          </template>
+        </el-alert>
+
+        <!-- 推荐模型表格 -->
+        <el-table
+          :data="recommendations"
+          stripe
+          style="width: 100%; margin-top: 20px"
+          :row-class-name="getRowClassName"
+          @row-click="handleRowClick"
+          highlight-current-row
+        >
+          <!-- 选择列 -->
+          <el-table-column width="60" align="center">
             <template #default="{ row }">
-              <div class="flex items-center justify-center">
-                <div :class="[
-                  'w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer',
-                  localData.modelId === row.id ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'
-                ]">
-                  <el-icon v-if="localData.modelId === row.id" class="w-3 h-3 text-white"><Check /></el-icon>
+              <el-radio
+                v-model="selectedModelId"
+                :label="row.model_id"
+                @click.stop="selectModel(row)"
+              >
+                <span></span>
+              </el-radio>
+            </template>
+          </el-table-column>
+
+          <!-- 模型列 -->
+          <el-table-column label="模型" width="280">
+            <template #default="{ row, $index }">
+              <div class="model-cell">
+                <div class="model-icon" :style="{ backgroundColor: getModelIconColor($index) }">
+                  <span class="icon-text">{{ row.display_name.substring(0, 2) }}</span>
+                </div>
+                <div class="model-info">
+                  <div class="model-name">{{ row.display_name }}</div>
+                  <div class="model-subtitle">{{ row.model_name }}</div>
                 </div>
               </div>
             </template>
           </el-table-column>
-          
-          <el-table-column label="模型" width="200">
+
+          <!-- 模型类型列 -->
+          <el-table-column label="模型类型" width="150" align="center">
             <template #default="{ row }">
-              <div class="flex items-center gap-3">
-                <div :class="[
-                  'w-10 h-10 rounded-lg flex items-center justify-center text-white',
-                  row.color
-                ]">
-                  <el-icon class="w-5 h-5"><component :is="row.icon" /></el-icon>
-                </div>
-                <div>
-                  <div class="font-medium text-gray-900">{{ row.name }}</div>
-                  <div class="text-xs text-gray-500">{{ row.abbr }}</div>
-                </div>
+              <el-tag v-if="row.tags && row.tags[0]" effect="plain">
+                {{ row.tags[0] }}
+              </el-tag>
+            </template>
+          </el-table-column>
+
+          <!-- 适用场景列 -->
+          <el-table-column label="适用场景" width="280">
+            <template #default="{ row }">
+              <div class="task-types">
+                {{ formatTaskTypes(row) }}
               </div>
             </template>
           </el-table-column>
-          
-          <el-table-column label="模型类型" width="120">
+
+          <!-- 简介列 -->
+          <el-table-column label="简介" min-width="350">
             <template #default="{ row }">
-              <el-tag :class="row.typeClass" size="small">{{ row.type }}</el-tag>
-            </template>
-          </el-table-column>
-          
-          <el-table-column label="适用场景" width="200">
-            <template #default="{ row }">
-              <span class="text-sm text-gray-700">{{ row.scenario }}</span>
-            </template>
-          </el-table-column>
-          
-          <el-table-column label="简介" min-width="300">
-            <template #default="{ row }">
-              <span class="text-sm text-gray-600">{{ row.description }}</span>
-            </template>
-          </el-table-column>
-          
-          <el-table-column label="推荐指数" width="150">
-            <template #default="{ row }">
-              <div class="flex items-center gap-2">
-                <div class="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    :class="['h-full rounded-full', row.ratingColor]"
-                    :style="{ width: row.rating * 20 + '%' }"
-                  ></div>
-                </div>
-                <span class="text-sm font-bold text-gray-900">{{ row.rating }}/5</span>
+              <div class="description">
+                {{ row.description }}
               </div>
             </template>
           </el-table-column>
         </el-table>
+
+        <!-- 更多推荐提示 -->
+        <div v-if="totalRecommended > recommendations.length" class="more-tip">
+          <el-text type="info">
+            还有 {{ totalRecommended - recommendations.length }} 个模型符合要求，
+            <el-button text type="primary" @click="loadMore">查看更多</el-button>
+          </el-text>
+        </div>
       </div>
+
+      <!-- 无推荐结果 -->
+      <el-empty v-else description="暂无推荐模型">
+        <el-button type="primary" @click="loadRecommendations">刷新推荐</el-button>
+      </el-empty>
     </div>
 
-    <!-- 训练参数配置 -->
-    <div class="mb-8">
-      <div class="flex items-center justify-between mb-4">
-        <h4 class="font-bold text-gray-900">训练参数配置</h4>
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600">已选择：</span>
-          <span class="font-bold text-indigo-600">{{ selectedTrainModelName }}</span>
-        </div>
-      </div>
+    <!-- 已选择的模型配置 -->
+    <el-divider v-if="selectedModelInfo" />
+    <div v-if="selectedModelInfo" class="selected-model-config">
+      <h4>
+        <el-icon><Setting /></el-icon>
+        训练配置 - {{ selectedModelInfo.display_name }}
+      </h4>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- 网络结构配置 -->
-        <div class="space-y-6">
-          <div>
-            <h5 class="font-medium text-gray-900 mb-3">网络结构</h5>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">层数</label>
-                <div class="flex gap-2">
-                  <label 
-                    v-for="layer in layers" 
-                    :key="layer"
-                    :class="[
-                      'flex-1 p-3 border rounded-lg cursor-pointer text-center transition-all',
-                      localData.trainingConfig.layers === layer 
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-medium' 
-                        : 'border-gray-300 hover:border-gray-400'
-                    ]"
-                    @click="localData.trainingConfig.layers = layer"
-                  >
-                    {{ layer }}层
-                  </label>
-                </div>
-              </div>
-              
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">隐藏单元</label>
-                <div class="grid grid-cols-3 gap-2">
-                  <label 
-                    v-for="unit in hiddenUnits" 
-                    :key="unit"
-                    :class="[
-                      'p-3 border rounded-lg cursor-pointer text-center transition-all',
-                      localData.trainingConfig.hiddenUnits === unit 
-                        ? 'border-purple-500 bg-purple-50 text-purple-700 font-medium' 
-                        : 'border-gray-300 hover:border-gray-400'
-                    ]"
-                    @click="localData.trainingConfig.hiddenUnits = unit"
-                  >
-                    {{ unit }}
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        以下参数已自动填充为该模型的推荐配置，您可以根据需要调整
+      </el-alert>
 
+      <el-form :model="localData.trainingConfig" label-width="140px" label-position="right" class="evaluation-form">
         <!-- 训练参数 -->
-        <div class="space-y-6">
-          <div>
-            <h5 class="font-medium text-gray-900 mb-3">训练参数</h5>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">学习率</label>
-                <div class="grid grid-cols-3 gap-2">
-                  <label 
-                    v-for="lr in learningRates" 
-                    :key="lr"
-                    :class="[
-                      'p-3 border rounded-lg cursor-pointer text-center transition-all',
-                      localData.trainingConfig.learningRate === lr 
-                        ? 'border-green-500 bg-green-50 text-green-700 font-medium' 
-                        : 'border-gray-300 hover:border-gray-400'
-                    ]"
-                    @click="localData.trainingConfig.learningRate = lr"
-                  >
-                    {{ lr }}
-                  </label>
-                </div>
-              </div>
-              
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">批次大小</label>
-                  <div class="flex gap-2">
-                    <label 
-                      v-for="batch in batchSizes" 
-                      :key="batch"
-                      :class="[
-                        'flex-1 p-3 border rounded-lg cursor-pointer text-center transition-all text-sm',
-                        localData.trainingConfig.batchSize === batch 
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' 
-                          : 'border-gray-300 hover:border-gray-400'
-                      ]"
-                      @click="localData.trainingConfig.batchSize = batch"
-                    >
-                      {{ batch }}
-                    </label>
-                  </div>
-                </div>
-                
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">优化器</label>
-                  <div class="flex gap-2">
-                    <label 
-                      v-for="optimizer in optimizers" 
-                      :key="optimizer"
-                      :class="[
-                        'flex-1 p-2 border rounded-lg cursor-pointer text-center transition-all text-sm',
-                        localData.trainingConfig.optimizer === optimizer 
-                          ? 'border-orange-500 bg-orange-50 text-orange-700 font-medium' 
-                          : 'border-gray-300 hover:border-gray-400'
-                      ]"
-                      @click="localData.trainingConfig.optimizer = optimizer"
-                    >
-                      {{ optimizer }}
-                    </label>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">训练轮数</label>
-                <div class="grid grid-cols-3 gap-2">
-                  <label 
-                    v-for="epoch in epochs" 
-                    :key="epoch"
-                    :class="[
-                      'p-3 border rounded-lg cursor-pointer text-center transition-all',
-                      localData.trainingConfig.epochs === epoch 
-                        ? 'border-red-500 bg-red-50 text-red-700 font-medium' 
-                        : 'border-gray-300 hover:border-gray-400'
-                    ]"
-                    @click="localData.trainingConfig.epochs = epoch"
-                  >
-                    {{ epoch }}
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="training-params">
+          <el-form-item label="训练轮数" required>
+            <el-input-number
+              v-model="localData.trainingConfig.trainingEpochs"
+              :min="1"
+              :max="500"
+              :step="10"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
+
+          <el-form-item label="批次大小" required>
+            <el-input-number
+              v-model="localData.trainingConfig.batchSize"
+              :min="1"
+              :max="512"
+              :step="1"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
+
+          <el-form-item label="学习率" required>
+            <el-input-number
+              v-model="localData.trainingConfig.learningRate"
+              :min="0.00001"
+              :max="1"
+              :step="0.0001"
+              :precision="5"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
+
+          <el-form-item label="优化器" required>
+            <el-select v-model="localData.trainingConfig.optimizer" placeholder="请选择优化器" style="width: 100%">
+              <el-option label="Adam" value="Adam" />
+              <el-option label="SGD" value="SGD" />
+              <el-option label="RMSprop" value="RMSprop" />
+              <el-option label="AdamW" value="AdamW" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="损失函数" required>
+            <el-select v-model="localData.trainingConfig.lossFunction" placeholder="请选择损失函数" style="width: 100%">
+              <el-option label="CrossEntropyLoss" value="CrossEntropyLoss" />
+              <el-option label="MSELoss" value="MSELoss" />
+              <el-option label="BCELoss" value="BCELoss" />
+              <el-option label="NLLLoss" value="NLLLoss" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="学习率调度器">
+            <el-select v-model="localData.trainingConfig.scheduler" placeholder="请选择调度器" style="width: 100%">
+              <el-option label="StepLR" value="StepLR" />
+              <el-option label="CosineAnnealingLR" value="CosineAnnealingLR" />
+              <el-option label="ReduceLROnPlateau" value="ReduceLROnPlateau" />
+              <el-option label="无" value="None" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="权重衰减">
+            <el-input-number
+              v-model="localData.trainingConfig.weightDecay"
+              :min="0"
+              :max="1"
+              :step="0.00001"
+              :precision="5"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
+
+          <el-form-item label="动量（Momentum）" v-if="localData.trainingConfig.optimizer === 'SGD'">
+            <el-input-number
+              v-model="localData.trainingConfig.momentum"
+              :min="0"
+              :max="1"
+              :step="0.1"
+              :precision="2"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
         </div>
-      </div>
+      </el-form>
     </div>
 
-    <!-- 训练进度 -->
-    <div class="mb-8">
-      <h4 class="font-bold text-gray-900 mb-4">训练进度</h4>
-      
-      <div v-if="!trainingStarted && !trainingCompleted" class="text-center p-8 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
-        <el-icon class="w-12 h-12 text-gray-400 mx-auto mb-4"><VideoPlay /></el-icon>
-        <p class="text-gray-600 mb-4">点击下方按钮开始模型训练</p>
-        <el-button 
-          @click="startTraining"
-          type="success"
-          size="large"
-        >
-          <el-icon class="mr-2"><VideoPlay /></el-icon>
-          开始训练
-        </el-button>
-      </div>
-      
-      <!-- 训练中 -->
-      <div v-else-if="trainingStarted" class="space-y-6">
-        <!-- 总体进度 -->
-        <div>
-          <div class="flex justify-between items-center mb-3">
-            <span class="font-medium text-gray-900">总体训练进度</span>
-            <span class="font-bold text-indigo-600">{{ overallProgress }}%</span>
-          </div>
-          <div class="h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              class="h-full rounded-full transition-all duration-1000 progress-bar"
-              :style="{ width: overallProgress + '%' }"
-            ></div>
-          </div>
-        </div>
-        
-        <!-- 详细指标 -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-700">当前轮次</span>
-              <span class="font-bold text-blue-600">{{ currentEpoch }}/{{ localData.trainingConfig.epochs || 50 }}</span>
-            </div>
-            <div class="h-2 bg-blue-100 rounded-full overflow-hidden">
-              <div 
-                class="h-full bg-blue-500 rounded-full" 
-                :style="{ width: (currentEpoch / (localData.trainingConfig.epochs || 50)) * 100 + '%' }"
-              ></div>
-            </div>
-          </div>
-          
-          <div class="p-4 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-700">损失值</span>
-              <span class="font-bold text-green-600">{{ lossValue.toFixed(4) }}</span>
-            </div>
-            <div class="flex items-center text-xs text-green-600">
-              <el-icon class="w-4 h-4 mr-1"><TrendCharts /></el-icon>
-              下降趋势良好
-            </div>
-          </div>
-          
-          <div class="p-4 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-700">准确率</span>
-              <span class="font-bold text-purple-600">{{ accuracy.toFixed(2) }}%</span>
-            </div>
-            <div class="flex items-center text-xs text-purple-600">
-              <el-icon class="w-4 h-4 mr-1"><TrendCharts /></el-icon>
-              持续上升中
-            </div>
-          </div>
-        </div>
-        
-        <!-- 训练日志 -->
-        <div class="border border-gray-200 rounded-xl overflow-hidden">
-          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h5 class="font-medium text-gray-900">训练日志</h5>
-          </div>
-          <div class="p-4 max-h-40 overflow-y-auto">
-            <div v-for="(log, index) in trainingLogs" :key="index" class="text-sm font-mono mb-2">
-              <span class="text-gray-500">[{{ log.time }}]</span>
-              <span :class="log.type === 'info' ? 'text-gray-700' : 'text-green-600'">
-                {{ log.message }}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 训练控制按钮 -->
-        <div class="flex justify-center gap-3">
-          <el-button @click="toggleTraining" :type="trainingPaused ? 'success' : 'warning'">
-            <el-icon class="mr-2"><component :is="trainingPaused ? 'VideoPlay' : 'VideoPause'" /></el-icon>
-            {{ trainingPaused ? '继续训练' : '暂停训练' }}
-          </el-button>
-          <el-button @click="restartTraining" type="info" plain>
-            <el-icon class="mr-2"><RefreshRight /></el-icon>
-            重新训练
-          </el-button>
-        </div>
-      </div>
-      
-      <!-- 训练完成 -->
-      <div v-else-if="trainingCompleted" class="space-y-6">
-        <!-- 训练完成提示 -->
-        <div class="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
-          <div class="flex items-start gap-4">
-            <div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <el-icon class="w-8 h-8 text-white"><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="flex-1">
-              <h5 class="text-xl font-bold text-gray-900 mb-2">模型训练完成！</h5>
-              <p class="text-gray-700 mb-3">模型已成功训练并保存，可用于后续的对抗攻击测试。</p>
-              
-              <!-- 模型文件信息 -->
-              <div class="mt-4 p-4 bg-white border border-green-200 rounded-lg">
-                <div class="flex items-center justify-between mb-3">
-                  <h6 class="font-medium text-gray-900">生成的模型文件</h6>
-                  <div class="flex gap-2">
-                    <el-button 
-                      @click="downloadModel"
-                      type="success"
-                      size="small"
-                      plain
-                    >
-                      <el-icon class="mr-1"><Download /></el-icon>
-                      下载
-                    </el-button>
-                    <el-button 
-                      @click="viewModelDetails"
-                      size="small"
-                      plain
-                    >
-                      <el-icon class="mr-1"><View /></el-icon>
-                      查看
-                    </el-button>
-                  </div>
-                </div>
-                <div class="space-y-2">
-                  <div class="flex items-center gap-3 p-2 bg-gray-50 rounded">
-                    <el-icon class="w-4 h-4 text-green-600"><Files /></el-icon>
-                    <div class="flex-1">
-                      <div class="font-medium text-sm text-gray-900">{{ generatedModelFile.name }}</div>
-                      <div class="text-xs text-gray-500">{{ generatedModelFile.type }} · {{ formatFileSize(generatedModelFile.size) }}</div>
-                    </div>
-                    <el-tag type="success" size="small">已保存</el-tag>
-                  </div>
-                  <div class="text-xs text-gray-600 pl-7">
-                    保存路径: <code class="bg-gray-100 px-1 rounded">{{ generatedModelFile.path }}</code>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 模型性能摘要 -->
-              <div class="grid grid-cols-2 gap-4 mt-4">
-                <div class="p-3 bg-white border border-gray-200 rounded-lg">
-                  <div class="text-xs text-gray-600 mb-1">最终准确率</div>
-                  <div class="text-xl font-bold text-green-600">{{ accuracy.toFixed(2) }}%</div>
-                </div>
-                <div class="p-3 bg-white border border-gray-200 rounded-lg">
-                  <div class="text-xs text-gray-600 mb-1">最终损失值</div>
-                  <div class="text-xl font-bold text-blue-600">{{ lossValue.toFixed(4) }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 训练日志（查看模式） -->
-        <div class="border border-gray-200 rounded-xl overflow-hidden">
-          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-            <h5 class="font-medium text-gray-900">训练日志</h5>
-            <span class="text-xs text-gray-500">{{ trainingLogs.length }} 条记录</span>
-          </div>
-          <div class="p-4 max-h-60 overflow-y-auto">
-            <div v-for="(log, index) in trainingLogs" :key="index" class="text-sm font-mono mb-2">
-              <span class="text-gray-500">[{{ log.time }}]</span>
-              <span :class="log.type === 'info' ? 'text-gray-700' : 'text-green-600'">
-                {{ log.message }}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 完成后操作按钮 -->
-        <div class="flex justify-center gap-3">
-          <el-button @click="restartTraining" type="primary" plain>
-            <el-icon class="mr-2"><RefreshRight /></el-icon>
-            重新训练
-          </el-button>
-          <el-button @click="downloadModel" type="success">
-            <el-icon class="mr-2"><Download /></el-icon>
-            下载模型
-          </el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 操作按钮 -->
-    <div class="action-buttons">
-      <el-button @click="$emit('prev')">
-        <el-icon class="mr-2"><ArrowLeft /></el-icon>
-        上一步：数据集选择
+    <!-- 下一步按钮 -->
+    <div v-if="selectedModelInfo" class="next-button-container">
+      <el-button type="primary" size="large" @click="$emit('next')">
+        下一步：对抗策略选择
+        <el-icon class="ml-2"><ArrowRight /></el-icon>
       </el-button>
-      
-      <div class="flex gap-3">
-        <el-button 
-          @click="$emit('next')"
-          type="primary" 
-          :disabled="!trainingCompleted"
-        >
-          下一步：鲁棒性评估策略选择
-          <el-icon class="ml-2"><ArrowRight /></el-icon>
-        </el-button>
-      </div>
     </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Monitor,
-  Check,
-  VideoPlay,
-  VideoPause,
-  TrendCharts,
-  CircleCheckFilled,
-  Download,
-  View,
-  Files,
-  RefreshRight,
-  ArrowLeft,
-  ArrowRight
-} from '@element-plus/icons-vue'
+import { Setting, Loading, ArrowRight } from '@element-plus/icons-vue'
+
+// ==================== 类型定义 ====================
+
+interface ModelRecommendationItem {
+  model_id: number
+  display_name: string
+  model_name: string
+  framework?: string
+  modality?: string
+  task_type?: string
+  description?: string
+  tags?: string[]
+  recommendation_reason?: string
+  default_config_preview?: {
+    epochs?: number
+    batch_size?: number
+    learning_rate?: number
+    optimizer?: string
+    loss_function?: string
+    scheduler?: string
+    weight_decay?: number
+    momentum?: number
+  }
+}
+
+interface DatasetInfoForRecommendation {
+  name?: string
+  modality?: string
+  task_type?: string
+  sample_count?: number
+  class_count?: number
+}
 
 interface Props {
   modelValue: {
-    modelId: string
+    modelId: number | null
     trainingConfig: any
-    trainedModel: any
   }
   dataset: any
 }
@@ -504,255 +295,318 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// 本地数据
+// ==================== 推荐相关状态 ====================
+
+const loading = ref(false)
+const recommendations = ref<ModelRecommendationItem[]>([])
+const datasetInfo = ref<DatasetInfoForRecommendation | null>(null)
+const totalRecommended = ref(0)
+const selectedModelId = ref<number | undefined>(undefined)
+
+// ==================== 训练配置状态 ====================
+
+const selectedModelInfo = ref<ModelRecommendationItem | null>(null)
+
 const localData = ref({
-  modelId: '',
+  modelId: null as number | null,
   trainingConfig: {
-    layers: 2,
-    hiddenUnits: 64,
-    learningRate: 0.001,
+    trainingEpochs: 10,
     batchSize: 32,
+    learningRate: 0.001,
     optimizer: 'Adam',
-    epochs: 50
+    lossFunction: 'CrossEntropyLoss',
+    scheduler: 'StepLR',
+    weightDecay: 0.0001,
+    momentum: 0.9
   },
-  trainedModel: null,
   ...props.modelValue
 })
 
-// 训练状态
-const trainingStarted = ref(false)
-const trainingPaused = ref(false)
-const trainingCompleted = ref(false)
-const overallProgress = ref(0)
-const currentEpoch = ref(0)
-const lossValue = ref(2.5)
-const accuracy = ref(50.0)
-const trainingLogs = ref<Array<{time: string, message: string, type: string}>>([])
+// ==================== Computed ====================
 
-// 生成的模型文件信息
-const generatedModelFile = ref({
-  name: 'trained_model.pth',
-  type: 'PyTorch Model File',
-  size: 4587520, // 4.5 MB
-  path: '/models/trained/' + Date.now() + '_model.pth'
+const selectedModel = computed(() => {
+  return recommendations.value.find((rec) => rec.model_id === selectedModelId.value)
 })
 
-// 配置选项
-const layers = [1, 2, 3]
-const hiddenUnits = [32, 64, 128]
-const learningRates = [0.01, 0.001, 0.0001]
-const batchSizes = [16, 32, 64]
-const optimizers = ['Adam', 'SGD', 'RMSprop']
-const epochs = [30, 50, 100]
+// ==================== 推荐相关方法 ====================
 
-// 推荐模型列表
-const recommendedModels = ref([
-  {
-    id: 'lstm',
-    name: 'LSTM',
-    abbr: 'Long Short-Term Memory',
-    type: '时序模型',
-    typeClass: 'bg-blue-100 text-blue-800',
-    scenario: '时间序列预测、自然语言处理',
-    description: '适用于处理序列数据的循环神经网络变体，能够学习长期依赖关系',
-    icon: 'TrendCharts',
-    color: 'bg-gradient-to-br from-blue-500 to-blue-600',
-    rating: 4.5,
-    ratingColor: 'bg-yellow-500'
-  },
-  {
-    id: 'transformer',
-    name: 'Transformer',
-    abbr: 'Attention Mechanism',
-    type: '通用模型',
-    typeClass: 'bg-purple-100 text-purple-800',
-    scenario: '文本翻译、图像识别、语音处理',
-    description: '基于自注意力机制的模型，并行计算能力强，适合多模态任务',
-    icon: 'Monitor',
-    color: 'bg-gradient-to-br from-purple-500 to-purple-600',
-    rating: 5,
-    ratingColor: 'bg-green-500'
-  },
-  {
-    id: 'tcn',
-    name: 'TCN',
-    abbr: 'Temporal Convolutional Network',
-    type: '时序模型',
-    typeClass: 'bg-green-100 text-green-800',
-    scenario: '时间序列分类、事件预测',
-    description: '基于卷积神经网络的时间序列模型，感受野大，训练效率高',
-    icon: 'TrendCharts',
-    color: 'bg-gradient-to-br from-green-500 to-green-600',
-    rating: 4,
-    ratingColor: 'bg-blue-500'
-  },
-  {
-    id: 'resnet',
-    name: 'ResNet-50',
-    abbr: 'Residual Network',
-    type: '图像模型',
-    typeClass: 'bg-red-100 text-red-800',
-    scenario: '图像分类、目标检测',
-    description: '深度残差网络，解决深度网络训练中的梯度消失问题',
-    icon: 'Files',
-    color: 'bg-gradient-to-br from-red-500 to-red-600',
-    rating: 4.8,
-    ratingColor: 'bg-yellow-500'
-  },
-  {
-    id: 'bert',
-    name: 'BERT',
-    abbr: 'Bidirectional Encoder',
-    type: '文本模型',
-    typeClass: 'bg-orange-100 text-orange-800',
-    scenario: '文本分类、问答系统',
-    description: '基于Transformer的双向预训练语言模型',
-    icon: 'Files',
-    color: 'bg-gradient-to-br from-orange-500 to-orange-600',
-    rating: 4.7,
-    ratingColor: 'bg-green-500'
+/**
+ * 加载推荐模型
+ */
+async function loadRecommendations() {
+  if (!props.dataset?.datasetId) {
+    ElMessage.warning("请先选择数据集")
+    return
   }
-])
 
-// 计算属性
-const selectedTrainModelName = computed(() => {
-  const model = recommendedModels.value.find(m => m.id === localData.value.modelId)
-  return model ? model.name : '未选择'
-})
+  loading.value = true
+  try {
+    // 模拟 API 延迟
+    await new Promise(resolve => setTimeout(resolve, 800))
 
-// 方法
-const selectTrainModel = (row: any) => {
-  localData.value.modelId = row.id
-  ElMessage.success(`已选择模型：${row.name}`)
-}
-
-const startTraining = () => {
-  trainingStarted.value = true
-  trainingCompleted.value = false
-  overallProgress.value = 0
-  currentEpoch.value = 0
-  lossValue.value = 2.5
-  accuracy.value = 50.0
-  trainingLogs.value = []
-  
-  // 生成模型文件名
-  const timestamp = new Date().getTime()
-  const modelName = localData.value.modelId.toUpperCase()
-  const datasetName = props.dataset.name || 'Dataset'
-  generatedModelFile.value = {
-    name: `${datasetName.replace(/\s+/g, '_')}_${modelName}_${timestamp}.pth`,
-    type: 'PyTorch Model File',
-    size: Math.floor(Math.random() * 3000000) + 2000000, // 2-5 MB
-    path: `/models/trained/${datasetName.replace(/\s+/g, '_')}_${modelName}_${timestamp}.pth`
-  }
-  
-  // 添加初始日志
-  addTrainingLog(`开始训练模型: ${selectedTrainModelName.value}`)
-  addTrainingLog(`数据集: ${props.dataset.name || '未知'}`)
-  addTrainingLog(`配置: ${localData.value.trainingConfig.layers}层, ${localData.value.trainingConfig.hiddenUnits}隐藏单元, LR=${localData.value.trainingConfig.learningRate}`)
-  addTrainingLog(`目标轮次: ${localData.value.trainingConfig.epochs}, 批次大小: ${localData.value.trainingConfig.batchSize}`)
-  
-  ElMessage.success('模型训练已开始')
-  
-  // 模拟训练过程
-  simulateTraining()
-}
-
-const restartTraining = () => {
-  trainingStarted.value = false
-  trainingCompleted.value = false
-  overallProgress.value = 0
-  currentEpoch.value = 0
-  lossValue.value = 2.5
-  accuracy.value = 50.0
-  trainingLogs.value = []
-  ElMessage.info('训练已重置')
-}
-
-const toggleTraining = () => {
-  trainingPaused.value = !trainingPaused.value
-  addTrainingLog(trainingPaused.value ? '训练已暂停' : '训练已继续')
-  ElMessage.info(trainingPaused.value ? '训练已暂停' : '训练已继续')
-}
-
-const simulateTraining = () => {
-  if (trainingCompleted.value) return
-  
-  const interval = setInterval(() => {
-    if (trainingPaused.value) return
-    
-    // 更新进度
-    overallProgress.value = Math.min(overallProgress.value + 0.5, 100)
-    currentEpoch.value = Math.floor((overallProgress.value / 100) * localData.value.trainingConfig.epochs)
-    
-    // 模拟损失下降和准确率上升
-    if (lossValue.value > 0.1) {
-      lossValue.value -= 0.01
+    // Mock 数据集信息
+    datasetInfo.value = {
+      name: props.dataset.name || "数据集-" + props.dataset.datasetId,
+      modality: props.dataset.modality || "image",
+      task_type: props.dataset.task || "classification",
+      sample_count: props.dataset.sampleCount || 10000,
+      class_count: props.dataset.classCount || 10
     }
-    if (accuracy.value < 95) {
-      accuracy.value += 0.25
-    }
-    
-    // 添加训练日志
-    if (Math.random() > 0.7) {
-      addTrainingLog(`Epoch ${currentEpoch.value}: Loss = ${lossValue.value.toFixed(4)}, Acc = ${accuracy.value.toFixed(2)}%`)
-    }
-    
-    // 训练完成
-    if (overallProgress.value >= 100) {
-      clearInterval(interval)
-      trainingCompleted.value = true
-      trainingStarted.value = false
-      addTrainingLog('模型训练完成!', 'success')
-      addTrainingLog(`最终准确率: ${accuracy.value.toFixed(2)}%, 最终损失: ${lossValue.value.toFixed(4)}`, 'success')
-      addTrainingLog(`模型已保存至: ${generatedModelFile.value.path}`, 'success')
-      
-      // 更新本地数据
-      localData.value.trainedModel = {
-        name: generatedModelFile.value.name,
-        path: generatedModelFile.value.path,
-        accuracy: accuracy.value,
-        loss: lossValue.value
+
+    // Mock 推荐模型数据
+    const mockRecommendations: ModelRecommendationItem[] = [
+      {
+        model_id: 1,
+        display_name: "ResNet-50",
+        model_name: "resnet50",
+        framework: "PyTorch",
+        modality: props.dataset.modality || "image",
+        task_type: props.dataset.task || "classification",
+        description: "深度残差网络，适用于图像分类任务，具有良好的泛化能力和训练稳定性。在ImageNet等大规模数据集上表现优异。",
+        tags: ["CNN", "残差网络"],
+        recommendation_reason: "适合图像分类任务，性能稳定",
+        default_config_preview: {
+          epochs: 50,
+          batch_size: 32,
+          learning_rate: 0.001,
+          optimizer: "Adam",
+          loss_function: "CrossEntropyLoss",
+          scheduler: "StepLR",
+          weight_decay: 0.0001,
+          momentum: 0.9
+        }
+      },
+      {
+        model_id: 2,
+        display_name: "EfficientNet-B0",
+        model_name: "efficientnet_b0",
+        framework: "PyTorch",
+        modality: props.dataset.modality || "image",
+        task_type: props.dataset.task || "classification",
+        description: "高效的卷积神经网络，在参数量和精度之间取得良好平衡，训练速度快，适合快速实验。",
+        tags: ["CNN", "轻量级"],
+        recommendation_reason: "轻量级模型，训练速度快",
+        default_config_preview: {
+          epochs: 40,
+          batch_size: 64,
+          learning_rate: 0.001,
+          optimizer: "Adam",
+          loss_function: "CrossEntropyLoss",
+          scheduler: "CosineAnnealingLR",
+          weight_decay: 0.00001,
+          momentum: 0.9
+        }
+      },
+      {
+        model_id: 3,
+        display_name: "Vision Transformer (ViT-B/16)",
+        model_name: "vit_base_patch16",
+        framework: "PyTorch",
+        modality: props.dataset.modality || "image",
+        task_type: props.dataset.task || "classification",
+        description: "基于Transformer架构的视觉模型，在大规模数据集上性能优异，具有强大的特征提取能力。",
+        tags: ["Transformer", "注意力机制"],
+        recommendation_reason: "适合大规模数据集，特征提取能力强",
+        default_config_preview: {
+          epochs: 30,
+          batch_size: 16,
+          learning_rate: 0.0003,
+          optimizer: "AdamW",
+          loss_function: "CrossEntropyLoss",
+          scheduler: "CosineAnnealingLR",
+          weight_decay: 0.0001,
+          momentum: 0.9
+        }
+      },
+      {
+        model_id: 4,
+        display_name: "MobileNet-V3",
+        model_name: "mobilenet_v3_large",
+        framework: "PyTorch",
+        modality: props.dataset.modality || "image",
+        task_type: props.dataset.task || "classification",
+        description: "专为移动设备优化的轻量级网络，推理速度极快，适合资源受限环境部署。",
+        tags: ["轻量级", "移动端"],
+        recommendation_reason: "超轻量级，适合资源受限环境",
+        default_config_preview: {
+          epochs: 60,
+          batch_size: 128,
+          learning_rate: 0.001,
+          optimizer: "RMSprop",
+          loss_function: "CrossEntropyLoss",
+          scheduler: "StepLR",
+          weight_decay: 0.00004,
+          momentum: 0.9
+        }
+      },
+      {
+        model_id: 5,
+        display_name: "DenseNet-121",
+        model_name: "densenet121",
+        framework: "PyTorch",
+        modality: props.dataset.modality || "image",
+        task_type: props.dataset.task || "classification",
+        description: "密集连接卷积网络，特征重用效率高，参数效率好，适合中等规模数据集。",
+        tags: ["CNN", "密集连接"],
+        recommendation_reason: "参数效率高，适合中等规模数据集",
+        default_config_preview: {
+          epochs: 45,
+          batch_size: 32,
+          learning_rate: 0.0001,
+          optimizer: "SGD",
+          loss_function: "CrossEntropyLoss",
+          scheduler: "ReduceLROnPlateau",
+          weight_decay: 0.0001,
+          momentum: 0.9
+        }
       }
-      
-      ElMessage.success('模型训练完成！')
-    }
-  }, 100)
-}
+    ]
 
-const addTrainingLog = (message: string, type = 'info') => {
-  const now = new Date()
-  const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
-  trainingLogs.value.push({ time, message, type })
-  
-  // 保持日志数量不超过20条
-  if (trainingLogs.value.length > 20) {
-    trainingLogs.value.shift()
+    recommendations.value = mockRecommendations.slice(0, 5)
+    totalRecommended.value = mockRecommendations.length
+
+    if (recommendations.value.length > 0) {
+      ElMessage.success(`为您推荐了 ${recommendations.value.length} 个合适的模型`)
+    } else {
+      ElMessage.info("未找到合适的模型")
+    }
+    
+    console.log("===== 模型推荐完成 =====")
+    console.log("推荐了", recommendations.value.length, "个模型")
+  } catch (error: any) {
+    console.error("===== 模型推荐错误 =====")
+    console.error("错误详情:", error)
+    ElMessage.error(error.message || "模型推荐失败，请稍后重试")
+  } finally {
+    loading.value = false
   }
 }
 
-const downloadModel = () => {
-  addTrainingLog('开始下载模型文件...')
-  ElMessage.success('模型下载功能开发中')
-  // 模拟下载
-  setTimeout(() => {
-    addTrainingLog(`模型文件 ${generatedModelFile.value.name} 下载完成`, 'success')
-  }, 1000)
+/**
+ * 选择模型
+ */
+function selectModel(rec: ModelRecommendationItem) {
+  selectedModelId.value = rec.model_id
+  selectedModelInfo.value = rec
+  localData.value.modelId = rec.model_id
+
+  // 自动填充所有训练配置参数（来自预训练配置）
+  if (rec.default_config_preview) {
+    const config = rec.default_config_preview
+
+    // 基础训练参数
+    if (config.epochs) localData.value.trainingConfig.trainingEpochs = config.epochs
+    if (config.batch_size) localData.value.trainingConfig.batchSize = config.batch_size
+    if (config.learning_rate) localData.value.trainingConfig.learningRate = config.learning_rate
+
+    // 优化器相关
+    if (config.optimizer) localData.value.trainingConfig.optimizer = config.optimizer
+    if (config.momentum !== undefined) localData.value.trainingConfig.momentum = config.momentum
+    if (config.weight_decay !== undefined) localData.value.trainingConfig.weightDecay = config.weight_decay
+
+    // 损失函数和调度器
+    if (config.loss_function) localData.value.trainingConfig.lossFunction = config.loss_function
+    if (config.scheduler) localData.value.trainingConfig.scheduler = config.scheduler
+  }
+
+  ElMessage.success(`已选择模型: ${rec.display_name}，训练配置已自动填充`)
 }
 
-const viewModelDetails = () => {
-  addTrainingLog('查看模型详细信息...')
-  const info = `模型信息:\n名称: ${generatedModelFile.value.name}\n类型: ${generatedModelFile.value.type}\n大小: ${formatFileSize(generatedModelFile.value.size)}\n路径: ${generatedModelFile.value.path}`
-  ElMessage.info(info)
+/**
+ * 表格行点击事件
+ */
+function handleRowClick(row: ModelRecommendationItem) {
+  selectModel(row)
 }
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+/**
+ * 表格行类名
+ */
+function getRowClassName({ row }: { row: ModelRecommendationItem }): string {
+  return row.model_id === selectedModelId.value ? 'selected-row' : ''
 }
+
+/**
+ * 加载更多推荐
+ */
+function loadMore() {
+  ElMessage.info("加载更多功能开发中")
+}
+
+/**
+ * 获取模态类型文本
+ */
+function getModalityText(modality?: string): string {
+  const map: Record<string, string> = {
+    image: "图像",
+    audio: "音频",
+    video: "视频",
+    text: "文本",
+    sensor: "传感器",
+    multimodal: "多模态",
+    unknown: "未知",
+  }
+  return map[modality || ""] || modality || ""
+}
+
+/**
+ * 获取任务类型文本
+ */
+function getTaskTypeText(taskType?: string): string {
+  const map: Record<string, string> = {
+    classification: "分类",
+    object_detection: "目标检测",
+    speech_recognition: "语音识别",
+    regression: "回归",
+    generation: "生成",
+    anomaly_detection: "异常检测",
+    segmentation: "分割",
+    recommendation: "推荐",
+    image_classification: "图像分类",
+    text_classification: "文本分类",
+    named_entity_recognition: "命名实体识别",
+    instance_segmentation: "实例分割",
+    audio_classification: "音频分类",
+    sentiment_analysis: "情感分析",
+    time_series_classification: "时序分类",
+  }
+  return map[taskType || ""] || taskType || ""
+}
+
+/**
+ * 格式化任务类型列表
+ */
+function formatTaskTypes(rec: ModelRecommendationItem): string {
+  const tasks = rec.recommendation_reason || ""
+  return tasks.replace(/，建议.*$/, "")
+}
+
+/**
+ * 获取模型图标颜色
+ */
+function getModelIconColor(index: number): string {
+  const colors = [
+    "#3b82f6", // 蓝色
+    "#8b5cf6", // 紫色
+    "#ec4899", // 粉色
+    "#f59e0b", // 橙色
+    "#10b981", // 绿色
+  ]
+  return colors[index % colors.length]
+}
+
+// ==================== Watchers ====================
+
+// 监听数据集ID变化，自动加载推荐
+watch(
+  () => props.dataset?.datasetId,
+  (newId) => {
+    if (newId) {
+      loadRecommendations()
+    }
+  },
+  { immediate: true }
+)
 
 // 监听本地数据变化
 watch(localData, (newVal) => {
@@ -767,210 +621,208 @@ watch(() => props.modelValue, (newVal) => {
 
 <style lang="scss" scoped>
 .model-trainer {
-  padding: 2rem;
-  
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    
-    h3 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin: 0;
+  // ==================== 模型推荐区域样式 ====================
+  .model-recommendation {
+    padding: 20px;
+    min-height: 400px;
+
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 400px;
+      color: var(--el-text-color-secondary);
+
+      p {
+        margin-top: 16px;
+        font-size: 14px;
+      }
+    }
+
+    .recommendation-results {
+      .dataset-summary {
+        margin-bottom: 24px;
+
+        .dataset-meta {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 8px;
+
+          .meta-item {
+            font-size: 13px;
+            color: var(--el-text-color-secondary);
+          }
+        }
+      }
+
+      // 表格样式
+      :deep(.el-table) {
+        .selected-row {
+          background-color: var(--el-color-primary-light-9) !important;
+        }
+
+        .el-table__row {
+          cursor: pointer;
+          transition: background-color 0.2s;
+
+          &:hover {
+            background-color: var(--el-fill-color-light);
+          }
+        }
+
+        // 单元格内边距
+        .el-table__cell {
+          padding: 16px 12px;
+        }
+      }
+
+      // 模型单元格样式
+      .model-cell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .model-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+
+          .icon-text {
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+          }
+        }
+
+        .model-info {
+          flex: 1;
+          min-width: 0;
+
+          .model-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--el-text-color-primary);
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .model-subtitle {
+            font-size: 12px;
+            color: var(--el-text-color-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        }
+      }
+
+      // 任务类型样式
+      .task-types {
+        font-size: 14px;
+        color: var(--el-text-color-regular);
+        line-height: 1.6;
+      }
+
+      // 简介样式
+      .description {
+        font-size: 14px;
+        color: var(--el-text-color-regular);
+        line-height: 1.6;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      // 单选框样式
+      :deep(.el-radio) {
+        .el-radio__label {
+          display: none;
+        }
+
+        .el-radio__input {
+          margin: 0;
+        }
+      }
+
+      .more-tip {
+        text-align: center;
+        padding: 16px;
+        background: var(--el-fill-color-light);
+        border-radius: 4px;
+        margin-top: 16px;
+      }
     }
   }
-  
-  .action-buttons {
+
+  // ==================== 训练配置区域样式 ====================
+  .selected-model-config {
+    padding: 24px;
+    margin-top: 24px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+    border-radius: 12px;
+    border: 1px solid var(--el-border-color-light);
+
+    h4 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 20px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+
+      .el-icon {
+        color: var(--el-color-primary);
+      }
+    }
+
+    .training-params {
+      padding: 16px;
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .el-form-item {
+      margin-bottom: 20px;
+    }
+  }
+
+  // ==================== 下一步按钮样式 ====================
+  .next-button-container {
     display: flex;
-    justify-content: space-between;
-    padding-top: 1rem;
-    border-top: 1px solid #e5e7eb;
+    justify-content: center;
+    padding: 32px 0 24px;
+
+    .el-button {
+      min-width: 280px;
+      font-size: 15px;
+      font-weight: 500;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+      transition: all 0.3s ease;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
+      }
+    }
   }
-}
 
-// 表格样式
-:deep(.model-table) {
-  .el-table__row {
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+  .evaluation-form {
+    max-width: 800px;
+    margin: 0 auto;
   }
-  
-  .el-table__row:hover {
-    background-color: #f8fafc;
-  }
-}
-
-// 进度条动画
-.progress-bar {
-  background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
-  background-size: 200% 100%;
-  animation: gradient-shift 2s ease infinite;
-}
-
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-// Tailwind-like classes
-.flex { display: flex; }
-.items-center { align-items: center; }
-.items-start { align-items: flex-start; }
-.justify-between { justify-content: space-between; }
-.justify-center { justify-content: center; }
-.gap-2 { gap: 0.5rem; }
-.gap-3 { gap: 0.75rem; }
-.gap-4 { gap: 1rem; }
-.gap-6 { gap: 1.5rem; }
-.gap-8 { gap: 2rem; }
-.w-3 { width: 0.75rem; }
-.h-3 { height: 0.75rem; }
-.w-4 { width: 1rem; }
-.h-4 { height: 1rem; }
-.w-5 { width: 1.25rem; }
-.h-5 { height: 1.25rem; }
-.w-7 { width: 1.75rem; }
-.h-7 { height: 1.75rem; }
-.w-8 { width: 2rem; }
-.h-8 { height: 2rem; }
-.w-10 { width: 2.5rem; }
-.h-10 { height: 2.5rem; }
-.w-12 { width: 3rem; }
-.h-12 { height: 3rem; }
-.w-16 { width: 4rem; }
-.h-16 { height: 4rem; }
-.w-24 { width: 6rem; }
-.h-2 { height: 0.5rem; }
-.h-3 { height: 0.75rem; }
-.rounded-lg { border-radius: 0.5rem; }
-.rounded-xl { border-radius: 0.75rem; }
-.rounded-full { border-radius: 9999px; }
-.bg-indigo-600 { background-color: rgb(79 70 229); }
-.bg-indigo-50 { background-color: rgb(238 242 255); }
-.bg-purple-50 { background-color: rgb(250 245 255); }
-.bg-green-50 { background-color: rgb(240 253 244); }
-.bg-green-500 { background-color: rgb(34 197 94); }
-.bg-blue-50 { background-color: rgb(239 246 255); }
-.bg-blue-100 { background-color: rgb(219 234 254); }
-.bg-blue-500 { background-color: rgb(59 130 246); }
-.bg-orange-50 { background-color: rgb(255 247 237); }
-.bg-red-50 { background-color: rgb(254 242 242); }
-.bg-gray-50 { background-color: rgb(249 250 251); }
-.bg-gray-100 { background-color: rgb(243 244 246); }
-.bg-gray-200 { background-color: rgb(229 231 235); }
-.bg-yellow-500 { background-color: rgb(234 179 8); }
-.text-white { color: rgb(255 255 255); }
-.text-gray-900 { color: rgb(17 24 39); }
-.text-gray-700 { color: rgb(55 65 81); }
-.text-gray-600 { color: rgb(75 85 99); }
-.text-gray-500 { color: rgb(107 114 128); }
-.text-indigo-600 { color: rgb(79 70 229); }
-.text-indigo-700 { color: rgb(67 56 202); }
-.text-blue-600 { color: rgb(37 99 235); }
-.text-blue-700 { color: rgb(29 78 216); }
-.text-green-600 { color: rgb(22 163 74); }
-.text-green-700 { color: rgb(21 128 61); }
-.text-purple-600 { color: rgb(147 51 234); }
-.text-purple-700 { color: rgb(126 34 206); }
-.text-orange-700 { color: rgb(194 65 12); }
-.text-red-700 { color: rgb(185 28 28); }
-.text-sm { font-size: 0.875rem; }
-.text-xs { font-size: 0.75rem; }
-.text-xl { font-size: 1.25rem; }
-.font-bold { font-weight: 700; }
-.font-semibold { font-weight: 600; }
-.font-medium { font-weight: 500; }
-.font-mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace; }
-.shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); }
-.border { border-width: 1px; }
-.border-2 { border-width: 2px; }
-.border-dashed { border-style: dashed; }
-.border-gray-200 { border-color: rgb(229 231 235); }
-.border-gray-300 { border-color: rgb(209 213 219); }
-.border-indigo-500 { border-color: rgb(99 102 241); }
-.border-indigo-600 { border-color: rgb(79 70 229); }
-.border-purple-500 { border-color: rgb(168 85 247); }
-.border-purple-200 { border-color: rgb(221 214 254); }
-.border-green-200 { border-color: rgb(187 247 208); }
-.border-green-300 { border-color: rgb(134 239 172); }
-.border-blue-200 { border-color: rgb(191 219 254); }
-.border-blue-500 { border-color: rgb(59 130 246); }
-.border-orange-500 { border-color: rgb(249 115 22); }
-.border-red-500 { border-color: rgb(239 68 68); }
-.p-2 { padding: 0.5rem; }
-.p-3 { padding: 0.75rem; }
-.p-4 { padding: 1rem; }
-.p-6 { padding: 1.5rem; }
-.p-8 { padding: 2rem; }
-.px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
-.px-4 { padding-left: 1rem; padding-right: 1rem; }
-.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-.pl-7 { padding-left: 1.75rem; }
-.mb-1 { margin-bottom: 0.25rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.mb-3 { margin-bottom: 0.75rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-6 { margin-bottom: 1.5rem; }
-.mb-8 { margin-bottom: 2rem; }
-.mt-1 { margin-top: 0.25rem; }
-.mt-3 { margin-top: 0.75rem; }
-.mt-4 { margin-top: 1rem; }
-.mr-1 { margin-right: 0.25rem; }
-.mr-2 { margin-right: 0.5rem; }
-.ml-2 { margin-left: 0.5rem; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.space-y-4 > * + * { margin-top: 1rem; }
-.space-y-6 > * + * { margin-top: 1.5rem; }
-.grid { display: grid; }
-.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.text-center { text-align: center; }
-.cursor-pointer { cursor: pointer; }
-.transition-all { transition-property: all; }
-.duration-1000 { transition-duration: 1000ms; }
-.overflow-hidden { overflow: hidden; }
-.overflow-y-auto { overflow-y: auto; }
-.block { display: block; }
-.flex-1 { flex: 1 1 0%; }
-.flex-shrink-0 { flex-shrink: 0; }
-.max-h-40 { max-height: 10rem; }
-.max-h-60 { max-height: 15rem; }
-
-// 响应式
-@media (min-width: 768px) {
-  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-
-@media (min-width: 1024px) {
-  .lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-// 悬停效果
-.hover\:border-gray-400:hover { border-color: rgb(156 163 175); }
-
-// Element Plus标签样式
-.bg-blue-100.text-blue-800 { 
-  background-color: rgb(219 234 254); 
-  color: rgb(30 64 175); 
-}
-.bg-purple-100.text-purple-800 { 
-  background-color: rgb(243 232 255); 
-  color: rgb(107 33 168); 
-}
-.bg-green-100.text-green-800 { 
-  background-color: rgb(220 252 231); 
-  color: rgb(22 101 52); 
-}
-.bg-red-100.text-red-800 { 
-  background-color: rgb(254 226 226); 
-  color: rgb(153 27 27); 
-}
-.bg-orange-100.text-orange-800 { 
-  background-color: rgb(255 237 213); 
-  color: rgb(154 52 18); 
 }
 </style>

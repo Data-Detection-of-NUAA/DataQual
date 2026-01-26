@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">3</span>
         <div>
-          <h3 class="font-bold text-gray-900">鲁棒性评估策略选择</h3>
+          <h3 class="font-bold text-gray-900">对抗策略选择</h3>
           <p class="text-sm text-gray-500 mt-1">选择评估策略和攻击方法</p>
         </div>
       </div>
