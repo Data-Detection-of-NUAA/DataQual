@@ -137,11 +137,163 @@
             </div>
           </div>
 
-          <!-- 对比分析区域 -->
+          <!-- 黄金数据集对比 -->
           <div class="lg:col-span-2 space-y-6">
             <div class="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
-              <h3 class="font-bold text-gray-900 mb-4">评估完成</h3>
-              <p class="text-gray-600">鲁棒性评估已完成，结果如左侧所示。</p>
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-gray-900">黄金数据集对比</h3>
+                <el-tag size="small" type="warning">基准对比</el-tag>
+              </div>
+
+              <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div class="flex items-start gap-2">
+                  <el-icon class="text-amber-600 mt-0.5"><InfoFilled /></el-icon>
+                  <div class="text-sm text-amber-800">
+                    <p class="font-medium mb-1">关于黄金数据集</p>
+                    <p class="text-xs text-amber-700">黄金数据集是经过精心标注和验证的基准数据集，用于对比模型在标准场景下的性能表现。</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead>
+                    <tr class="border-b-2 border-gray-300">
+                      <th class="text-left py-3 px-4 text-sm font-bold text-gray-800">指标</th>
+                      <th class="text-center py-3 px-4 text-sm font-bold text-indigo-600">当前模型</th>
+                      <th class="text-center py-3 px-4 text-sm font-bold text-amber-600">黄金数据集</th>
+                      <th class="text-center py-3 px-4 text-sm font-bold text-gray-700">差异</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td class="py-4 px-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                          <span class="text-sm font-medium text-gray-900">Clean Accuracy</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-indigo-700">{{ (summary.cleanAcc * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-amber-700">{{ (goldenDataset.cleanAcc * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span :class="[
+                          'font-mono text-sm font-bold px-2 py-1 rounded',
+                          (summary.cleanAcc - goldenDataset.cleanAcc) >= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        ]">
+                          {{ (summary.cleanAcc - goldenDataset.cleanAcc) >= 0 ? '+' : '' }}{{ ((summary.cleanAcc - goldenDataset.cleanAcc) * 100).toFixed(1) }}%
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td class="py-4 px-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                          <span class="text-sm font-medium text-gray-900">Robust Accuracy</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-indigo-700">{{ (summary.robustAcc * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-amber-700">{{ (goldenDataset.robustAcc * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span :class="[
+                          'font-mono text-sm font-bold px-2 py-1 rounded',
+                          (summary.robustAcc - goldenDataset.robustAcc) >= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        ]">
+                          {{ (summary.robustAcc - goldenDataset.robustAcc) >= 0 ? '+' : '' }}{{ ((summary.robustAcc - goldenDataset.robustAcc) * 100).toFixed(1) }}%
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td class="py-4 px-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                          <span class="text-sm font-medium text-gray-900">Attack Success Rate</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-indigo-700">{{ (summary.asr * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-amber-700">{{ (goldenDataset.asr * 100).toFixed(1) }}%</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span :class="[
+                          'font-mono text-sm font-bold px-2 py-1 rounded',
+                          (summary.asr - goldenDataset.asr) <= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        ]">
+                          {{ (summary.asr - goldenDataset.asr) >= 0 ? '+' : '' }}{{ ((summary.asr - goldenDataset.asr) * 100).toFixed(1) }}%
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td class="py-4 px-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full bg-purple-500"></div>
+                          <span class="text-sm font-medium text-gray-900">平均扰动 (ε)</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-indigo-700">{{ Number(summary.avgEps).toFixed(3) }}</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-amber-700">{{ Number(goldenDataset.avgEps).toFixed(3) }}</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span :class="[
+                          'font-mono text-sm font-bold px-2 py-1 rounded',
+                          (summary.avgEps - goldenDataset.avgEps) <= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        ]">
+                          {{ (summary.avgEps - goldenDataset.avgEps) >= 0 ? '+' : '' }}{{ (summary.avgEps - goldenDataset.avgEps).toFixed(3) }}
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td class="py-4 px-4">
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+                          <span class="text-sm font-medium text-gray-900">总耗时</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-indigo-700">{{ formatTime(summary.totalSeconds) }}</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span class="font-mono text-base font-bold text-amber-700">{{ formatTime(goldenDataset.totalSeconds) }}</span>
+                      </td>
+                      <td class="py-4 px-4 text-center">
+                        <span :class="[
+                          'font-mono text-sm font-bold px-2 py-1 rounded',
+                          (summary.totalSeconds - goldenDataset.totalSeconds) <= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        ]">
+                          {{ (summary.totalSeconds - goldenDataset.totalSeconds) >= 0 ? '+' : '' }}{{ summary.totalSeconds - goldenDataset.totalSeconds }}s
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div class="flex items-center gap-2">
+                  <el-icon class="text-blue-600"><DataAnalysis /></el-icon>
+                  <div class="text-sm text-blue-800">
+                    <span class="font-medium">对比分析：</span>
+                    <span v-if="(summary.robustAcc - goldenDataset.robustAcc) >= 0" class="text-green-700 font-bold">
+                      当前模型鲁棒性优于黄金数据集基准
+                    </span>
+                    <span v-else class="text-orange-700 font-bold">
+                      当前模型鲁棒性低于黄金数据集基准，建议进一步优化
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -307,6 +459,17 @@ const history = ref([
   { id: "JOB-2026-0017", dataset: "AG News", model: "BERT-Base", attacks: "TextFooler", asr: 0.312, robustAcc: 0.721, time: "1小时前", status: "完成" },
   { id: "JOB-2026-0016", dataset: "ImageNet-Mini", model: "ResNet-50", attacks: "CW, PGD", asr: 0.421, robustAcc: 0.601, time: "3小时前", status: "完成" }
 ])
+
+// 黄金数据集对比数据
+const goldenDataset = ref({
+  name: "CIFAR-10 黄金数据集",
+  cleanAcc: 0.945,
+  robustAcc: 0.712,
+  asr: 0.288,
+  avgEps: 0.031,
+  avgQueries: 3200,
+  totalSeconds: 156
+})
 
 // 计算属性
 const robustnessScore = computed(() => {

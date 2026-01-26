@@ -6,8 +6,8 @@
         <div class="max-w-7xl mx-auto">
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">DqTest 鲁棒性评估平台</h1>
-              <p class="text-sm text-gray-500 mt-1">多模态深度学习模型鲁棒性评估与测试平台</p>
+              <h1 class="text-2xl font-bold text-gray-900">DqTest</h1>
+              <p class="text-sm text-gray-500 mt-1">多模态数据集鲁棒性评估与测试平台</p>
             </div>
             <div class="flex items-center gap-2">
               <el-tag :type="getTaskStatusType()" size="small">{{ getTaskStatusText() }}</el-tag>
@@ -15,40 +15,37 @@
           </div>
           
           <!-- 步骤指示器 - 可点击导航 -->
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-center gap-4">
             <div 
               v-for="(step, index) in steps" 
               :key="step.id"
-              class="flex items-center"
+              @click="navigateToStep(index + 1)"
+              :class="[
+                'flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer',
+                'border-2 w-44 justify-start',
+                currentStep === index + 1
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200'
+                  : currentStep > index + 1
+                  ? 'bg-white text-gray-700 border-emerald-400 hover:bg-emerald-50'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              ]"
             >
-              <div 
-                @click="navigateToStep(index + 1)"
+              <span 
                 :class="[
-                  'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer',
+                  'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
                   currentStep === index + 1
-                    ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border-indigo-200'
+                    ? 'bg-white text-indigo-600'
                     : currentStep > index + 1
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    ? 'bg-emerald-400 text-white'
+                    : 'bg-gray-200 text-gray-600'
                 ]"
               >
-                <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow">
-                  {{ index + 1 }}
-                </span>
-                <el-icon>
-                  <component :is="step.icon" />
-                </el-icon>
-                <span>{{ step.title }}</span>
-              </div>
-              
-              <!-- 连接线 -->
-              <div 
-                v-if="index < steps.length - 1" 
-                :class="[
-                  'h-px w-8 mx-2',
-                  currentStep > index + 1 ? 'bg-emerald-300' : 'bg-gray-300'
-                ]"
-              />
+                {{ index + 1 }}
+              </span>
+              <el-icon :size="16" class="flex-shrink-0">
+                <component :is="step.icon" />
+              </el-icon>
+              <span class="font-medium text-sm truncate">{{ step.title }}</span>
             </div>
           </div>
         </div>
@@ -148,10 +145,10 @@ import ResultDashboard from './components/ResultDashboard.vue'
 // 步骤配置
 const steps = [
   { id: 'dataset', title: '数据集选择', icon: 'Folder' },
-  { id: 'model', title: '模型训练', icon: 'Cpu' },
-  { id: 'strategy', title: '策略选择', icon: 'Operation' },
+  { id: 'model', title: '模型选择与训练', icon: 'Cpu' },
+  { id: 'strategy', title: '鲁棒性评估策略选择', icon: 'Operation' },
   { id: 'params', title: '参数配置', icon: 'Setting' },
-  { id: 'metrics', title: '指标输出', icon: 'PieChart' },
+  { id: 'metrics', title: '指标与输出', icon: 'PieChart' },
   { id: 'run', title: '运行控制', icon: 'DataAnalysis' },
   { id: 'results', title: '结果总览', icon: 'TrendCharts' }
 ]
