@@ -19,6 +19,12 @@ export interface DQScanAlgorithmOut {
   params_schema: Record<string, any>;
 }
 
+export interface DQScanDefectCatalogOut {
+  modality: string;
+  engine: string;
+  tree: any[];
+}
+
 export interface DQScanCreateTaskIn {
   file_id: string;
   baseline_file_id?: string;
@@ -42,6 +48,7 @@ export interface DQScanTaskOut {
 export interface DQScanResult {
   summary: Record<string, any>;
   modules?: Record<string, any>;
+  defects?: Record<string, any>;
   reports?: Record<string, any>;
 }
 
@@ -61,6 +68,14 @@ const DQScanAPI = {
     return request<ApiResponse<DQScanAlgorithmOut[]>>({
       url: `${API_PATH}/algorithms`,
       method: "get",
+    });
+  },
+
+  getDefectsCatalog(opts?: { modality?: string; engine?: string }) {
+    return request<ApiResponse<DQScanDefectCatalogOut>>({
+      url: `${API_PATH}/defects`,
+      method: "get",
+      params: { modality: opts?.modality ?? "tabular", engine: opts?.engine },
     });
   },
 

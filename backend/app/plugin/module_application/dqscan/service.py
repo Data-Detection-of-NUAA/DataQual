@@ -18,6 +18,7 @@ dqscan 后端适配层：任务管理 + 运行引擎 + WebSocket 推送
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import sys
@@ -97,6 +98,391 @@ def _resolve_file_id(file_id: str) -> Path:
     return abs_path
 
 
+_BASE_DIRTY_ALGOS = [
+    {
+        "key": "ecod_3sigma",
+        "label": "通用脏数据扫描器（ECOD + 3σ）",
+        "desc": "一次扫描输出异常/缺失/重复/值域四类信号；有 pyod 则 ECOD，无依赖时降级为 3σ 规则。",
+        "status": "ready",
+    },
+    {"key": "isolation_forest", "label": "IsolationForest", "desc": "对高维数值更稳定的异常检测。", "status": "planned"},
+    {"key": "ruleset", "label": "可配置规则引擎", "desc": "按字段类型/业务规则进行检查。", "status": "planned"},
+    {"key": "autoencoder", "label": "AutoEncoder 异常检测", "desc": "适合大规模/非线性异常。", "status": "planned"},
+]
+
+_DISTRIBUTION_ALGOS = [
+    {
+        "key": "mmd_ks_chi2",
+        "label": "MMD + KS + 卡方（两样本）",
+        "desc": "对数值列做 MMD/KS，对类别列做卡方检验，输出 drift_detected 与 p_value。",
+        "status": "ready",
+    },
+    {"key": "psi", "label": "PSI（Population Stability Index）", "desc": "更适合离散/分箱场景，输出稳定性指数。", "status": "planned"},
+    {"key": "wasserstein", "label": "Wasserstein 距离", "desc": "对连续分布的距离度量，可用于分布差异排序。", "status": "planned"},
+    {"key": "embedding_mmd", "label": "Embedding 分布漂移（文本/图像）", "desc": "对非结构化数据先做 embedding，再做分布对比。", "status": "planned"},
+]
+
+_ADVERSARIAL_ALGOS = [
+    {
+        "key": "zoo_or_random",
+        "label": "ZOO（ART）/ 随机扰动",
+        "desc": "有 ART 则用 ZOO 黑盒攻击；无 ART 则使用随机扰动搜索降级。",
+        "status": "ready",
+    },
+    {"key": "fgsm", "label": "FGSM（白盒）", "desc": "快速白盒攻击，需要梯度支持。", "status": "planned"},
+    {"key": "pgd", "label": "PGD（白盒）", "desc": "更强的迭代攻击，需要梯度支持。", "status": "planned"},
+    {"key": "cw", "label": "C&W（白盒）", "desc": "优化式攻击，需要梯度支持。", "status": "planned"},
+]
+
+_PHYSICS_ALGOS = [
+    {
+        "key": "pandera_or_fallback",
+        "label": "Pandera Schema / 基础校验",
+        "desc": "有 pandera 则 schema 校验，否则使用基本 min/max 规则验证。",
+        "status": "ready",
+    },
+    {
+        "key": "cross_constraints",
+        "label": "跨字段约束（守恒/一致性）",
+        "desc": "启用输入输出守恒等跨字段启发式规则（已接入）。",
+        "status": "ready",
+    },
+    {"key": "causal_graph", "label": "因果图一致性", "desc": "基于因果图做一致性检查。", "status": "planned"},
+    {"key": "temporal_rules", "label": "时序物理规律", "desc": "适用于时序数据的物理规律校验。", "status": "planned"},
+]
+
+_DIRTY_MISSING_ALGOS = _BASE_DIRTY_ALGOS + [
+    {
+        "key": "missing_stats_threshold",
+        "label": "缺失统计 + 阈值",
+        "desc": "统计每列缺失率，超过阈值则告警，并输出影响字段与缺失分布。",
+        "status": "ready",
+    },
+    {
+        "key": "missing_pattern_mcar",
+        "label": "缺失模式分析（MCAR/MAR）",
+        "desc": "分析缺失是否与其他字段相关，定位系统性缺失与采集偏差。",
+        "status": "planned",
+    },
+    {
+        "key": "auto_imputation_suggest",
+        "label": "自动补全建议（KNN/Iterative）",
+        "desc": "给出补全策略与风险提示，辅助数据修复。",
+        "status": "planned",
+    },
+    {
+        "key": "missing_correlation_heatmap",
+        "label": "缺失相关性热力图",
+        "desc": "以可视化方式呈现缺失相关结构，便于快速排查。",
+        "status": "planned",
+    },
+]
+
+_DIRTY_DUPLICATE_ALGOS = _BASE_DIRTY_ALGOS + [
+    {
+        "key": "exact_duplicate",
+        "label": "完全重复检测",
+        "desc": "按整行或关键字段判断重复，输出重复率与示例行。",
+        "status": "ready",
+    },
+    {
+        "key": "near_duplicate_similarity",
+        "label": "近重复（相似度）",
+        "desc": "支持“近重复/模糊重复”识别（例如文本字段轻微差异）。",
+        "status": "planned",
+    },
+    {"key": "minhash_lsh", "label": "MinHash + LSH", "desc": "适合大规模去重的近似方法。", "status": "planned"},
+    {
+        "key": "record_linkage",
+        "label": "Record Linkage（实体对齐）",
+        "desc": "针对多字段拼接的“同一实体多条记录”识别。",
+        "status": "planned",
+    },
+]
+
+_DIRTY_RANGE_ALGOS = _BASE_DIRTY_ALGOS + [
+    {"key": "sigma_rule", "label": "3σ 规则", "desc": "用均值±kσ 的启发式方式发现可疑极值。", "status": "ready"},
+    {"key": "iqr_rule", "label": "IQR 规则", "desc": "对长尾分布更稳健的四分位距方法。", "status": "planned"},
+    {"key": "domain_rules", "label": "业务规则（min/max/枚举）", "desc": "按字段业务约束检查取值范围。", "status": "planned"},
+    {"key": "schema_constraints", "label": "Schema 约束联动", "desc": "与 Pandera/规则库联动，统一落地字段约束。", "status": "planned"},
+]
+
+_LABEL_MISMATCH_ALGOS = [
+    {
+        "key": "cv_consistency",
+        "label": "交叉验证一致性",
+        "desc": "通过交叉验证训练并找出“模型强烈不认可的标签”样本。",
+        "status": "planned",
+    },
+    {
+        "key": "embedding_knn",
+        "label": "Embedding + KNN 近邻一致性",
+        "desc": "在特征/embedding 空间中检查近邻标签一致性，发现疑似错标。",
+        "status": "planned",
+    },
+    {
+        "key": "confidence_margin",
+        "label": "置信度边界样本",
+        "desc": "识别高不确定样本与置信度异常样本，辅助人工复核。",
+        "status": "planned",
+    },
+]
+
+_DEFECT_CATALOG = {
+    "modality": "tabular",
+    "engine": "tabular_quality_engine",
+    "tree": [
+        {
+            "key": "dirty_data",
+            "label": "脏数据体系",
+            "desc": "完整性 / 一致性 / 异常与噪声 / 标注质量",
+            "children": [
+                {
+                    "key": "dirty_data.group_integrity",
+                    "label": "完整性（Completeness）",
+                    "desc": "缺失、空值、字段缺失等",
+                    "children": [
+                        {
+                            "key": "dirty_data.missing",
+                            "label": "缺失值异常",
+                            "desc": "统计缺失率与缺失模式，定位缺失严重字段。",
+                            "badge": {"text": "推荐", "type": "success"},
+                            "status": "ready",
+                            "module": "dirty_data",
+                            "algorithms": _DIRTY_MISSING_ALGOS,
+                        }
+                    ],
+                },
+                {
+                    "key": "dirty_data.group_noise",
+                    "label": "异常与噪声（Outliers）",
+                    "desc": "异常点、极值、噪声样本",
+                    "children": [
+                        {
+                            "key": "dirty_data.anomaly",
+                            "label": "异常样本（Outlier）",
+                            "desc": "无监督异常检测，定位疑似异常行与可疑字段。",
+                            "badge": {"text": "推荐", "type": "success"},
+                            "status": "ready",
+                            "module": "dirty_data",
+                            "algorithms": _BASE_DIRTY_ALGOS,
+                        },
+                        {
+                            "key": "dirty_data.range",
+                            "label": "值域违规",
+                            "desc": "用统计规则或业务规则识别异常取值范围。",
+                            "status": "ready",
+                            "module": "dirty_data",
+                            "algorithms": _DIRTY_RANGE_ALGOS,
+                        },
+                    ],
+                },
+                {
+                    "key": "dirty_data.group_consistency",
+                    "label": "一致性（Consistency）",
+                    "desc": "重复、矛盾、规则不一致等",
+                    "children": [
+                        {
+                            "key": "dirty_data.duplicate",
+                            "label": "重复 / 近重复",
+                            "desc": "识别完全重复与近重复记录，输出去重建议。",
+                            "status": "ready",
+                            "module": "dirty_data",
+                            "algorithms": _DIRTY_DUPLICATE_ALGOS,
+                        }
+                    ],
+                },
+                {
+                    "key": "dirty_data.group_label",
+                    "label": "标注质量（Label）",
+                    "desc": "错标、弱标注、标签噪声",
+                    "children": [
+                        {
+                            "key": "dirty_data.label_mismatch",
+                            "label": "疑似错标（Label Mismatch）",
+                            "desc": "识别“标签与特征不一致”的样本（如猫被标成狗）。",
+                            "badge": {"text": "即将上线", "type": "warning"},
+                            "status": "planned",
+                            "disabled": True,
+                            "module": "dirty_data",
+                            "algorithms": _LABEL_MISMATCH_ALGOS,
+                        }
+                    ],
+                },
+            ],
+        },
+        {
+            "key": "distribution",
+            "label": "分布偏差体系",
+            "desc": "训练/基线 vs 当前数据分布变化监控",
+            "children": [
+                {
+                    "key": "distribution.group_feature",
+                    "label": "特征漂移（Feature Drift）",
+                    "desc": "数值/类别特征的分布变化",
+                    "children": [
+                        {
+                            "key": "distribution.numeric_drift",
+                            "label": "数值特征漂移",
+                            "desc": "对连续特征分布做两样本检验，输出漂移结论与 p 值。",
+                            "badge": {"text": "推荐", "type": "success"},
+                            "status": "ready",
+                            "module": "distribution",
+                            "algorithms": _DISTRIBUTION_ALGOS,
+                        },
+                        {
+                            "key": "distribution.categorical_drift",
+                            "label": "类别特征漂移",
+                            "desc": "对离散特征做卡方等检验，定位漂移字段。",
+                            "status": "ready",
+                            "module": "distribution",
+                            "algorithms": _DISTRIBUTION_ALGOS,
+                        },
+                    ],
+                },
+                {
+                    "key": "distribution.group_label",
+                    "label": "标签漂移（Label Shift）",
+                    "desc": "标签分布变化与类别占比变化",
+                    "children": [
+                        {
+                            "key": "distribution.label_shift",
+                            "label": "标签分布变化",
+                            "desc": "对标签列做分布对比，监控类占比突变与先验变化。",
+                            "status": "ready",
+                            "module": "distribution",
+                            "algorithms": _DISTRIBUTION_ALGOS,
+                        }
+                    ],
+                },
+                {
+                    "key": "distribution.group_unstructured",
+                    "label": "非结构化漂移",
+                    "desc": "文本/图像 embedding 的漂移监控",
+                    "children": [
+                        {
+                            "key": "distribution.embedding_drift",
+                            "label": "Embedding 分布漂移（文本/图像）",
+                            "desc": "对非结构化数据先做 embedding，再做分布对比。",
+                            "badge": {"text": "即将上线", "type": "warning"},
+                            "status": "planned",
+                            "disabled": True,
+                            "module": "distribution",
+                            "algorithms": _DISTRIBUTION_ALGOS,
+                        }
+                    ],
+                },
+            ],
+        },
+        {
+            "key": "adversarial",
+            "label": "对抗性与鲁棒性体系",
+            "desc": "黑盒/白盒攻击下模型脆弱性评估",
+            "children": [
+                {
+                    "key": "adversarial.group_attack",
+                    "label": "攻击评估（Attack）",
+                    "desc": "攻击成功率、扰动预算与鲁棒性",
+                    "children": [
+                        {
+                            "key": "adversarial.blackbox",
+                            "label": "黑盒攻击（ZOO/随机）",
+                            "desc": "在无梯度条件下进行黑盒攻击，评估模型易受攻击程度。",
+                            "badge": {"text": "可用", "type": "success"},
+                            "status": "ready",
+                            "module": "adversarial",
+                            "algorithms": _ADVERSARIAL_ALGOS,
+                        },
+                        {
+                            "key": "adversarial.whitebox",
+                            "label": "白盒攻击（FGSM/PGD）",
+                            "desc": "基于梯度的白盒攻击评估（需要模型与梯度接口）。",
+                            "badge": {"text": "即将上线", "type": "warning"},
+                            "status": "planned",
+                            "disabled": True,
+                            "module": "adversarial",
+                            "algorithms": _ADVERSARIAL_ALGOS,
+                        },
+                    ],
+                },
+                {
+                    "key": "adversarial.group_monitor",
+                    "label": "鲁棒性监控（Monitoring）",
+                    "desc": "敏感特征、鲁棒性分解与风险提示",
+                    "children": [
+                        {
+                            "key": "adversarial.sensitivity",
+                            "label": "特征敏感性分析",
+                            "desc": "识别对扰动最敏感的特征与子群体风险。",
+                            "badge": {"text": "即将上线", "type": "warning"},
+                            "status": "planned",
+                            "disabled": True,
+                            "module": "adversarial",
+                            "algorithms": _ADVERSARIAL_ALGOS,
+                        }
+                    ],
+                },
+            ],
+        },
+        {
+            "key": "physics",
+            "label": "物理保真度与规则体系",
+            "desc": "规则/约束一致性与守恒校验",
+            "children": [
+                {
+                    "key": "physics.group_schema",
+                    "label": "Schema 与字段约束",
+                    "desc": "类型/范围/枚举/依赖约束",
+                    "children": [
+                        {
+                            "key": "physics.schema",
+                            "label": "Schema 校验（字段约束）",
+                            "desc": "字段类型、范围、枚举与必填约束检查。",
+                            "badge": {"text": "推荐", "type": "success"},
+                            "status": "ready",
+                            "module": "physics",
+                            "algorithms": _PHYSICS_ALGOS,
+                        }
+                    ],
+                },
+                {
+                    "key": "physics.group_conservation",
+                    "label": "跨字段一致性",
+                    "desc": "守恒、平衡、逻辑一致性等",
+                    "children": [
+                        {
+                            "key": "physics.conservation",
+                            "label": "守恒/一致性校验",
+                            "desc": "启用跨字段启发式规则与自定义 min/max 约束。",
+                            "status": "ready",
+                            "module": "physics",
+                            "algorithms": _PHYSICS_ALGOS,
+                        }
+                    ],
+                },
+                {
+                    "key": "physics.group_future",
+                    "label": "高级规则（Advanced）",
+                    "desc": "因果/时序/结构化规则",
+                    "children": [
+                        {
+                            "key": "physics.temporal",
+                            "label": "时序物理规律",
+                            "desc": "面向时序数据的物理规律校验（例如单调、周期、滞后）。",
+                            "badge": {"text": "即将上线", "type": "warning"},
+                            "status": "planned",
+                            "disabled": True,
+                            "module": "physics",
+                            "algorithms": _PHYSICS_ALGOS,
+                        }
+                    ],
+                },
+            ],
+        },
+    ],
+}
+
+
 @dataclass
 class _TaskState:
     """任务在内存中的运行态状态（给 HTTP 查询与 WS snapshot 使用）。"""
@@ -131,6 +517,15 @@ class DQScanService:
         from dqscan.engine import list_algorithms
 
         return list_algorithms()
+
+    @classmethod
+    async def get_defects_catalog(cls, *, modality: str = "tabular", engine: str | None = None) -> dict[str, Any]:
+        """返回缺陷树（用于前端渲染缺陷体系与算法选项）。"""
+        if modality and modality != "tabular":
+            raise ValueError("当前仅支持 tabular 模态")
+        if engine and engine != "tabular_quality_engine":
+            raise ValueError("engine 不匹配")
+        return copy.deepcopy(_DEFECT_CATALOG)
 
     @classmethod
     async def upload(cls, file: UploadFile, *, max_bytes: int) -> dict[str, Any]:
@@ -187,6 +582,7 @@ class DQScanService:
 
         返回 task_id。任务执行不阻塞当前 HTTP 请求（后台运行）。
         """
+        cls._validate_params(params, baseline_file_id)
         task_id = uuid.uuid4().hex
         task_dir = (_tasks_root() / task_id).resolve()
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -205,6 +601,43 @@ class DQScanService:
             )
         )
         return task_id
+
+    @classmethod
+    def _validate_params(cls, params: dict[str, Any] | None, baseline_file_id: str | None) -> None:
+        if not params or not isinstance(params, dict):
+            return
+
+        modules_config = params.get("modules_config") if isinstance(params.get("modules_config"), dict) else {}
+        defects_cfg = params.get("defects") if isinstance(params.get("defects"), dict) else {}
+        defects_selected = defects_cfg.get("selected") if isinstance(defects_cfg.get("selected"), dict) else {}
+
+        dist_cfg_raw = modules_config.get("distribution") if isinstance(modules_config, dict) else None
+        dist_cfg = dist_cfg_raw if isinstance(dist_cfg_raw, dict) else {}
+        compare_mode = params.get("distribution_compare_mode") or dist_cfg.get("compare_mode")
+        modules = params.get("modules") if isinstance(params.get("modules"), list) else []
+        if not modules and defects_selected:
+            for defect_key, cfg in defects_selected.items():
+                if not isinstance(cfg, dict):
+                    continue
+                mk = cfg.get("module") or (defect_key.split(".", 1)[0] if isinstance(defect_key, str) else None)
+                if mk:
+                    modules.append(str(mk))
+
+        if compare_mode == "baseline_file" and "distribution" in modules and not baseline_file_id:
+            raise ValueError("分布偏差选择了“基线文件对比”，但未提供 baseline_file_id")
+
+        label_shift = defects_selected.get("distribution.label_shift") if isinstance(defects_selected, dict) else None
+        if isinstance(label_shift, dict) and label_shift.get("enabled") is not False:
+            executor = label_shift.get("executor_algorithm") or label_shift.get("executor_runtime")
+            if executor:
+                label_column = params.get("label_column")
+                if not label_column:
+                    label_column = dist_cfg.get("label_column")
+                if not label_column:
+                    params_block = label_shift.get("params") if isinstance(label_shift.get("params"), dict) else {}
+                    label_column = params_block.get("label_column")
+                if not label_column:
+                    raise ValueError("已启用标签分布变化，但未提供 label_column")
 
     @classmethod
     async def get_task(cls, task_id: str) -> dict[str, Any]:

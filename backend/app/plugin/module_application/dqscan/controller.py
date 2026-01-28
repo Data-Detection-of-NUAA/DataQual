@@ -26,6 +26,7 @@ from .schema import (
     DQScanAlgorithmOut,
     DQScanCreateTaskIn,
     DQScanCreateTaskOut,
+    DQScanDefectsOut,
     DQScanReportsOut,
     DQScanResultOut,
     DQScanTaskOut,
@@ -46,6 +47,20 @@ DQScanRouter = APIRouter(route_class=OperationLogRoute, prefix="/dqscan", tags=[
 )
 async def list_algorithms_controller() -> JSONResponse:
     data = await DQScanService.list_algorithms()
+    return SuccessResponse(data=data, msg="获取成功")
+
+
+@DQScanRouter.get(
+    "/defects",
+    summary="获取缺陷体系",
+    description="返回缺陷树与可用算法（用于前端渲染缺陷体系）。",
+    response_model=SuccessResponseOut[DQScanDefectsOut],
+)
+async def get_defects_controller(
+    modality: str = Query(default="tabular", description="数据模态"),
+    engine: str | None = Query(default=None, description="算法引擎"),
+) -> JSONResponse:
+    data = await DQScanService.get_defects_catalog(modality=modality, engine=engine)
     return SuccessResponse(data=data, msg="获取成功")
 
 

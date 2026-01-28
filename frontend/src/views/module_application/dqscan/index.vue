@@ -116,7 +116,7 @@
         <el-card v-if="distributionCompareMode === 'baseline_file'" shadow="never" class="mb-3">
           <template #header>
             <div class="flex-x-between">
-              <div class="font-bold">基线文件（可选）</div>
+              <div class="font-bold">基线文件（必填）</div>
               <div class="flex items-center gap-2">
                 <el-button v-if="baselineUploadedFile" @click="clearBaseline">清除基线</el-button>
                 <el-tag type="info" effect="plain" size="small">用于分布偏差模块</el-tag>
@@ -250,7 +250,10 @@
                 <template #default="{ data }">
                   <div class="dqscan-defect-node">
                     <div class="dqscan-defect-node-title">
-                      <span>{{ data.label }}</span>
+                      <el-tooltip v-if="data.desc" :content="data.desc" placement="right" :show-after="300">
+                        <span>{{ data.label }}</span>
+                      </el-tooltip>
+                      <span v-else>{{ data.label }}</span>
                       <el-tag
                         v-if="data.badge"
                         :type="data.badge.type"
@@ -261,7 +264,6 @@
                         {{ data.badge.text }}
                       </el-tag>
                     </div>
-                    <div v-if="data.desc" class="dqscan-defect-node-desc">{{ data.desc }}</div>
                   </div>
                 </template>
               </el-tree>
@@ -310,36 +312,483 @@
                   <el-input-number v-model="globalSeed" :min="0" :max="999999" :step="1" />
                 </el-form-item>
               </el-form>
+
+              <el-divider class="my-3" />
+
+              <div class="font-bold mb-2">报告输出</div>
+              <el-form label-width="110px">
+                <el-form-item label="Word 报告">
+                  <el-switch v-model="reportOptions.docx" />
+                </el-form-item>
+                <el-form-item label="摘要报告">
+                  <el-switch v-model="reportOptions.summary" />
+                </el-form-item>
+                <el-form-item label="样例数量">
+                  <el-input-number v-model="reportOptions.max_examples" :min="10" :max="500" :step="10" />
+                </el-form-item>
+              </el-form>
             </el-card>
           </el-col>
 
           <el-col :md="16" :xs="24">
-            <el-card shadow="never" class="mb-3">
+            <el-card v-if="false" shadow="never" class="mb-3">
               <template #header>
                 <div class="flex-x-between">
                   <div class="flex items-center gap-2">
-                    <div class="font-bold">{{ activeDefectMeta?.label || "缺陷配置" }}</div>
-                    <el-tag
-                      v-if="activeDefectMeta?.status"
-                      :type="activeDefectMeta.status === 'ready' ? 'success' : 'warning'"
-                      effect="plain"
-                      size="small"
-                    >
-                      {{ activeDefectMeta.status === "ready" ? "可用" : "即将上线" }}
-                    </el-tag>
+                    <div class="font-bold">配置工作台</div>
+                    <el-tag type="info" effect="plain" size="small">批量配置</el-tag>
                   </div>
                   <div class="flex items-center gap-2">
-                    <el-switch
-                      v-model="activeDefectEnabled"
-                      :disabled="activeDefectMeta?.status !== 'ready'"
-                      active-text="已启用"
-                      inactive-text="未启用"
-                    />
+                    <el-switch v-model="showOnlyEnabledDefects" active-text="仅显示已启用" inactive-text="显示全部" />
+                    <el-button size="small" @click="expandAllDefectPanels">展开全部</el-button>
+                    <el-button size="small" @click="collapseAllDefectPanels">折叠全部</el-button>
                   </div>
                 </div>
               </template>
 
-              <el-empty v-if="!activeDefectMeta" description="请在左侧缺陷树中选择一个缺陷类型进行配置" />
+              <el-alert
+                v-if="plannedAlgorithmsSelected.length"
+                type="warning"
+                show-icon
+                :closable="false"
+                title="包含即将上线算法"
+                :description="plannedAlgorithmsSelectedHint"
+                class="mb-3"
+              />
+
+              <el-alert
+                type="info"
+                show-icon
+                :closable="false"
+                title="算法复用与去重"
+                description="同一模块下多个缺陷可以复用同一算法；执行时会按模块去重避免重复计算。可用“同步到同模块缺陷”快速批量配置。"
+                class="mb-3"
+              />
+
+              <el-empty v-if="!visibleDefectKeys.length" description="暂无可配置缺陷，请先在左侧选择缺陷类型" />
+
+              <el-collapse v-else v-model="openDefectPanels" class="dqscan-defect-workbench">
+                <el-collapse-item v-for="defectKey in visibleDefectKeys" :key="defectKey" :name="defectKey">
+                  <template #title>
+                    <div class="dqscan-collapse-title">
+                      <div class="flex items-center gap-2">
+                        <span class="dqscan-collapse-title-text">{{ defectMeta(defectKey)?.label || defectKey }}</span>
+                        <el-tag
+                          :type="defectMeta(defectKey)?.status === 'ready' ? 'success' : 'warning'"
+                          effect="plain"
+                          size="small"
+                        >
+                          {{ defectMeta(defectKey)?.status === "ready" ? "可用" : "即将上线" }}
+                        </el-tag>
+                        <el-tag v-if="isDefectEnabled(defectKey)" type="success" effect="plain" size="small">已启用</el-tag>
+                        <el-tag v-else type="info" effect="plain" size="small">未启用</el-tag>
+                      </div>
+                      <div class="flex items-center gap-2" @click.stop>
+                        <el-switch
+                          :model-value="isDefectEnabled(defectKey)"
+                          :disabled="defectMeta(defectKey)?.status !== 'ready'"
+                          active-text="启用"
+                          inactive-text="关闭"
+                          @update:model-value="(v) => setDefectEnabled(defectKey, v)"
+                        />
+                      </div>
+                    </div>
+                  </template>
+
+                  <div :id="`defect-panel-${defectKey}`">
+                    <el-alert
+                      type="info"
+                      show-icon
+                      :closable="false"
+                      :title="defectMeta(defectKey)?.label || defectKey"
+                      :description="defectMeta(defectKey)?.desc || ''"
+                      class="mb-3"
+                    />
+
+                    <el-form label-width="120px">
+                      <el-form-item label="算法选择">
+                        <el-select
+                          :model-value="getDefectAlgorithms(defectKey)"
+                          multiple
+                          filterable
+                          collapse-tags
+                          collapse-tags-tooltip
+                          :max-collapse-tags="3"
+                          placeholder="选择算法（可多选）"
+                          style="width: 100%"
+                          popper-class="dqscan-algo-select-popper"
+                          @update:model-value="(v) => setDefectAlgorithms(defectKey, v)"
+                        >
+                          <el-option v-for="a in defectMeta(defectKey)?.algorithms || []" :key="a.key" :label="a.label" :value="a.key">
+                            <div class="dqscan-algo-option">
+                              <div class="dqscan-algo-option-main">
+                                <div class="dqscan-algo-option-title">{{ a.label }}</div>
+                                <div class="dqscan-algo-option-desc">{{ a.desc }}</div>
+                              </div>
+                              <el-tag
+                                :type="a.status === 'ready' ? 'success' : 'warning'"
+                                effect="plain"
+                                size="small"
+                                class="shrink-0"
+                              >
+                                {{ a.status === "ready" ? "可用" : "即将上线" }}
+                              </el-tag>
+                            </div>
+                          </el-option>
+                        </el-select>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                          <el-button size="small" @click="applyAlgorithmsToModule(defectKey)">同步到同模块缺陷</el-button>
+                          <el-button size="small" @click="clearDefectAlgorithms(defectKey)">清空算法</el-button>
+                        </div>
+                      </el-form-item>
+
+                    <el-form-item label="缺陷路径">
+                      <el-input :model-value="defectPathText(defectKey)" readonly />
+                    </el-form-item>
+                  </el-form>
+
+                  <el-card v-if="getDefectAlgorithms(defectKey).length" shadow="never" class="mb-3">
+                    <template #header>
+                      <div class="flex-x-between">
+                        <div class="font-bold">算法参数（按所选算法）</div>
+                        <el-tag type="info" effect="plain" size="small">可选</el-tag>
+                      </div>
+                    </template>
+
+                    <div v-for="algoKey in getDefectAlgorithms(defectKey)" :key="algoKey" class="mb-4">
+                      <div class="flex items-center gap-2">
+                        <div class="font-bold">{{ algoMetaByKey[algoKey]?.label || algoKey }}</div>
+                        <el-tag
+                          :type="algoMetaByKey[algoKey]?.status === 'ready' ? 'success' : 'warning'"
+                          effect="plain"
+                          size="small"
+                        >
+                          {{ algoMetaByKey[algoKey]?.status === "ready" ? "可用" : "即将上线" }}
+                        </el-tag>
+                      </div>
+
+                      <el-form label-width="160px" class="mt-2">
+                        <template v-if="algoKey === 'psi'">
+                          <el-form-item label="分箱数">
+                            <el-slider v-model="algoParams.psi_bins" :min="5" :max="50" :step="1" show-input />
+                          </el-form-item>
+                          <el-form-item label="分箱方式">
+                            <el-select v-model="algoParams.psi_bucket" placeholder="选择分箱方式">
+                              <el-option label="等频（quantile）" value="quantile" />
+                              <el-option label="等宽（uniform）" value="uniform" />
+                            </el-select>
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'wasserstein'">
+                          <el-form-item label="阈值">
+                            <el-slider v-model="algoParams.wasserstein_threshold" :min="0" :max="1" :step="0.01" show-input />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'embedding_mmd'">
+                          <el-form-item label="Embedding 模型">
+                            <el-select v-model="algoParams.embedding_model" filterable placeholder="选择模型">
+                              <el-option label="通用（small）" value="small" />
+                              <el-option label="通用（large）" value="large" />
+                            </el-select>
+                          </el-form-item>
+                          <el-form-item label="Batch Size">
+                            <el-input-number v-model="algoParams.embedding_batch_size" :min="1" :max="1024" :step="8" />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'isolation_forest'">
+                          <el-form-item label="树数量">
+                            <el-input-number v-model="algoParams.iforest_estimators" :min="50" :max="1000" :step="50" />
+                          </el-form-item>
+                          <el-form-item label="最大采样">
+                            <el-input-number v-model="algoParams.iforest_max_samples" :min="64" :max="100000" :step="64" />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'autoencoder'">
+                          <el-form-item label="潜变量维度">
+                            <el-input-number v-model="algoParams.ae_latent_dim" :min="4" :max="128" :step="4" />
+                          </el-form-item>
+                          <el-form-item label="训练轮数">
+                            <el-input-number v-model="algoParams.ae_epochs" :min="5" :max="200" :step="5" />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'fgsm'">
+                          <el-form-item label="范数">
+                            <el-select v-model="algoParams.fgsm_norm">
+                              <el-option label="L∞" value="linf" />
+                              <el-option label="L2" value="l2" />
+                            </el-select>
+                          </el-form-item>
+                          <el-form-item label="目标攻击">
+                            <el-switch v-model="algoParams.fgsm_targeted" />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else-if="algoKey === 'pgd'">
+                          <el-form-item label="步数">
+                            <el-input-number v-model="algoParams.pgd_steps" :min="1" :max="200" :step="5" />
+                          </el-form-item>
+                          <el-form-item label="步长">
+                            <el-slider v-model="algoParams.pgd_step_size" :min="0.0001" :max="0.1" :step="0.0005" show-input />
+                          </el-form-item>
+                          <el-form-item label="随机起点">
+                            <el-switch v-model="algoParams.pgd_random_start" />
+                          </el-form-item>
+                        </template>
+
+                        <template v-else>
+	                          <el-text type="info">该算法暂无可配置的算法参数。</el-text>
+                        </template>
+                      </el-form>
+                    </div>
+                  </el-card>
+
+                  <el-divider class="my-3" />
+
+                  <!-- 参数配置（按缺陷） -->
+                  <div v-if="defectKey === 'dirty_data.anomaly'">
+                      <el-form label-width="160px">
+                        <el-form-item label="异常比例">
+                          <div class="w-full">
+                            <el-slider v-model="dirtyContamination" :min="0" :max="0.5" :step="0.01" show-input />
+                            <el-text type="info">用于无监督异常检测的预期异常比例；越大越敏感。</el-text>
+                          </div>
+                        </el-form-item>
+                        <el-form-item label="采样上限">
+                          <el-input-number v-model="globalMaxSamples" :min="100" :max="500000" :step="100" />
+                        </el-form-item>
+                        <el-form-item label="输出样例数">
+                          <el-input-number v-model="dirtyMaxExamples" :min="10" :max="500" :step="10" />
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey === 'dirty_data.missing'">
+                      <el-form label-width="160px">
+                        <el-form-item label="缺失率阈值">
+                          <div class="w-full">
+                            <el-slider v-model="dirtyMissingThreshold" :min="0" :max="0.5" :step="0.01" show-input />
+                            <el-text type="info">用于判断某字段是否“缺失严重”。</el-text>
+                          </div>
+                        </el-form-item>
+                        <el-form-item label="字段白名单（可选）">
+                          <el-select v-model="dirtyWhitelistColumns" multiple filterable clearable placeholder="不选表示全字段参与">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                        </el-form-item>
+                        <el-form-item label="字段黑名单（可选）">
+                          <el-select v-model="dirtyBlacklistColumns" multiple filterable clearable placeholder="排除不需要的字段">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey === 'dirty_data.duplicate'">
+                      <el-form label-width="160px">
+                        <el-form-item label="重复率阈值">
+                          <div class="w-full">
+                            <el-slider v-model="dirtyDuplicateThreshold" :min="0" :max="0.2" :step="0.005" show-input />
+                            <el-text type="info">用于判断数据集是否“重复严重”。</el-text>
+                          </div>
+                        </el-form-item>
+                        <el-form-item label="关键字段（可选）">
+                          <el-select v-model="duplicateKeyColumns" multiple filterable clearable placeholder="不选表示按整行判断">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                        </el-form-item>
+                        <el-form-item label="相似度阈值">
+                          <div class="w-full">
+                            <el-slider v-model="duplicateSimilarity" :min="0.5" :max="1" :step="0.01" show-input />
+                            <el-text type="info">用于“近重复/模糊重复”检测（即将上线）。</el-text>
+                          </div>
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey === 'dirty_data.range'">
+                      <el-form label-width="160px">
+                        <el-form-item label="检测方式">
+                          <el-radio-group v-model="rangeMethod">
+                            <el-radio-button label="sigma">3σ</el-radio-button>
+                            <el-radio-button label="iqr">IQR</el-radio-button>
+                            <el-radio-button label="rules">自定义规则</el-radio-button>
+                          </el-radio-group>
+                        </el-form-item>
+                        <el-form-item v-if="rangeMethod === 'sigma'" label="σ 阈值">
+                          <el-slider v-model="rangeSigma" :min="2" :max="6" :step="0.5" show-input />
+                        </el-form-item>
+                        <el-form-item v-else-if="rangeMethod === 'iqr'" label="IQR 系数">
+                          <el-slider v-model="rangeIqrFactor" :min="1" :max="5" :step="0.25" show-input />
+                        </el-form-item>
+                        <el-form-item label="字段白名单（可选）">
+                          <el-select v-model="rangeOnlyColumns" multiple filterable clearable placeholder="不选表示全字段参与">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey === 'dirty_data.label_mismatch'">
+                      <el-form label-width="160px">
+                        <el-form-item label="标签列">
+                          <el-select v-model="labelMismatchLabelColumn" filterable clearable placeholder="选择标签列">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                        </el-form-item>
+                        <el-form-item label="抽样上限">
+                          <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
+                        </el-form-item>
+                        <el-form-item label="置信度阈值">
+                          <el-slider v-model="labelMismatchConfidence" :min="0.5" :max="0.99" :step="0.01" show-input />
+                        </el-form-item>
+                        <el-form-item label="交叉验证折数">
+                          <el-input-number v-model="labelMismatchFolds" :min="2" :max="10" :step="1" />
+                        </el-form-item>
+                        <el-form-item label="输出样例数">
+                          <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
+                        </el-form-item>
+                      </el-form>
+                      <el-text type="info" class="block mt-2">该能力后端对接后即可生效。</el-text>
+                    </div>
+
+                    <div
+                      v-else-if="
+                        defectKey === 'distribution.numeric_drift' ||
+                        defectKey === 'distribution.categorical_drift' ||
+                        defectKey === 'distribution.embedding_drift'
+                      "
+                    >
+                      <el-form label-width="160px">
+                        <el-form-item label="对比方式">
+                          <el-radio-group v-model="distributionCompareMode">
+                            <el-radio-button label="baseline_file">基线文件对比</el-radio-button>
+                            <el-radio-button label="in_file_split">仅当前文件（免基线）</el-radio-button>
+                          </el-radio-group>
+                        </el-form-item>
+                        <el-form-item v-if="distributionCompareMode === 'baseline_file'" label="基线文件">
+                          <div class="flex items-center gap-2">
+                            <el-tag v-if="baselineUploadedFile" type="success" effect="plain">已上传</el-tag>
+                            <el-tag v-else type="warning" effect="plain">未上传</el-tag>
+                            <el-button size="small" @click="gotoStep(1)">去上传</el-button>
+                            <el-button v-if="baselineUploadedFile" size="small" @click="clearBaseline">清除</el-button>
+                          </div>
+                        </el-form-item>
+                        <el-form-item v-else label="切分比例">
+                          <el-slider v-model="distributionTrainTestSplit" :min="0.1" :max="0.9" :step="0.05" show-input />
+                        </el-form-item>
+                        <el-form-item label="敏感度">
+                          <el-slider v-model="distributionPVal" :min="0.001" :max="0.2" :step="0.001" show-input />
+                        </el-form-item>
+                        <el-form-item label="排除字段">
+                          <el-popover placement="bottom-start" :width="420" trigger="click">
+                            <template #reference>
+                              <el-input :model-value="excludeColumnsDisplay" readonly placeholder="点击选择要排除的列" />
+                            </template>
+                            <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
+                            <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
+                            <el-scrollbar v-else height="220px">
+                              <el-checkbox-group v-model="distributionExcludeColumns" class="flex flex-col gap-1">
+                                <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
+                              </el-checkbox-group>
+                            </el-scrollbar>
+                            <div class="mt-2 flex justify-end gap-2">
+                              <el-button size="small" @click="distributionExcludeColumns = []">清空</el-button>
+                            </div>
+                          </el-popover>
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey === 'distribution.label_shift'">
+                      <el-form label-width="160px">
+                        <el-form-item label="标签列">
+                          <el-select v-model="distributionLabelColumn" clearable filterable placeholder="选择标签列">
+                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                          </el-select>
+                          <el-text type="info" class="block mt-2">用于检测“标签分布变化”（label shift）。</el-text>
+                        </el-form-item>
+                        <el-form-item label="敏感度">
+                          <el-slider v-model="distributionPVal" :min="0.001" :max="0.2" :step="0.001" show-input />
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey.startsWith('adversarial')">
+                      <el-form label-width="170px">
+                        <el-form-item label="扰动强度">
+                          <el-slider v-model="adversarialEpsilon" :min="0" :max="0.3" :step="0.005" show-input />
+                        </el-form-item>
+                        <el-form-item label="最大迭代次数">
+                          <el-input-number v-model="adversarialMaxIter" :min="1" :max="500" :step="5" />
+                        </el-form-item>
+                        <el-form-item label="搜索次数">
+                          <el-input-number v-model="adversarialRandomTrials" :min="1" :max="500" :step="5" />
+                        </el-form-item>
+                        <el-form-item label="扰动特征数">
+                          <el-input-number v-model="adversarialRandomFeatures" :min="1" :max="50" :step="1" />
+                        </el-form-item>
+                        <el-form-item label="采样上限">
+                          <el-input-number v-model="adversarialMaxSamples" :min="10" :max="5000" :step="10" />
+                        </el-form-item>
+                        <el-form-item label="随机种子">
+                          <el-input-number v-model="adversarialSeed" :min="0" :max="999999" :step="1" />
+                        </el-form-item>
+                      </el-form>
+                    </div>
+
+                    <div v-else-if="defectKey.startsWith('physics')">
+                      <el-form label-width="170px">
+                        <el-form-item label="启用守恒/一致性约束">
+                          <el-switch v-model="physicsCheckConservation" />
+                        </el-form-item>
+                        <el-form-item label="自动启发式约束">
+                          <el-switch v-model="physicsAutoConstraints" />
+                        </el-form-item>
+                      </el-form>
+                      <el-divider class="my-3" />
+                      <div class="flex-x-between mb-2">
+                        <div class="font-bold">自定义约束（min/max）</div>
+                        <el-button size="small" type="primary" @click="addPhysicsConstraint">添加约束</el-button>
+                      </div>
+                      <el-table :data="physicsConstraints" border size="small" style="width: 100%">
+                        <el-table-column label="字段" min-width="160">
+                          <template #default="{ row }">
+                            <el-select v-model="row.column" filterable clearable placeholder="选择字段">
+                              <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+                            </el-select>
+                          </template>
+                        </el-table-column>
+                        <el-table-column label="min" width="140">
+                          <template #default="{ row }">
+                            <el-input-number v-model="row.min" :step="1" />
+                          </template>
+                        </el-table-column>
+                        <el-table-column label="max" width="140">
+                          <template #default="{ row }">
+                            <el-input-number v-model="row.max" :step="1" />
+                          </template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="90" fixed="right">
+                          <template #default="{ row }">
+                            <el-button link type="danger" @click="removePhysicsConstraint(row.id)">删除</el-button>
+                          </template>
+                        </el-table-column>
+                      </el-table>
+                      <el-text type="info" class="block mt-2">未设置 min/max 的行会被忽略；字段名来源于当前文件表头解析。</el-text>
+                    </div>
+
+                    <el-empty v-else description="该缺陷暂未提供可配置参数" />
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+
+              <template v-if="false">
+                <el-empty v-if="!activeDefectMeta" description="请在左侧缺陷树中选择一个缺陷类型进行配置" />
 
               <div v-else>
                 <el-alert type="info" show-icon :closable="false" :title="activeDefectMeta.label" :description="activeDefectMeta.desc" class="mb-3" />
@@ -637,6 +1086,525 @@
                   </el-tab-pane>
                 </el-tabs>
               </div>
+              </template>
+            </el-card>
+
+            <el-card shadow="never" class="mb-3">
+              <template #header>
+                <div class="flex-x-between">
+                  <div class="flex items-center gap-2">
+                    <div class="font-bold">模块配置工作台</div>
+                    <el-tag type="info" effect="plain" size="small">模块级算法 + 缺陷绑定</el-tag>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <el-switch
+                      v-model="showOnlyEnabledDefects"
+                      active-text="仅显示已启用缺陷"
+                      inactive-text="显示全部缺陷"
+                    />
+                    <el-button size="small" @click="expandAllModulePanels">展开全部</el-button>
+                    <el-button size="small" @click="collapseAllModulePanels">折叠全部</el-button>
+                  </div>
+                </div>
+              </template>
+
+              <el-alert
+                type="info"
+                show-icon
+                :closable="false"
+                title="先配基础参数，再绑定缺陷算法"
+                description="推荐流程：先完成模块“基础参数”，再在“缺陷绑定”里为每个缺陷选择执行算法；最后到“算法参数”里补充该算法的特定参数。"
+                class="mb-3"
+              />
+              <el-alert
+                v-if="configIssuesHint"
+                type="warning"
+                show-icon
+                :closable="false"
+                title="还有配置未完成"
+                :description="configIssuesHint"
+                class="mb-3"
+              />
+
+              <el-collapse v-model="openModulePanels" class="dqscan-module-workbench">
+                <el-collapse-item v-for="m in modules" :key="m.key" :name="m.key">
+                  <template #title>
+                    <div class="dqscan-collapse-title">
+                      <div class="flex items-center gap-2">
+                        <span class="dqscan-collapse-title-text">{{ m.title }}</span>
+                        <el-tag type="info" effect="plain" size="small">{{ m.desc }}</el-tag>
+                        <el-tag v-if="isModuleEnabled(m.key)" type="success" effect="plain" size="small">已启用</el-tag>
+                        <el-tag v-else type="info" effect="plain" size="small">未启用</el-tag>
+                        <el-tag type="info" effect="plain" size="small">
+                          缺陷 {{ moduleEnabledDefectCount(m.key) }}/{{ moduleAllDefectCount(m.key) }}
+                        </el-tag>
+                        <el-tag type="info" effect="plain" size="small">算法 {{ getModuleAlgorithms(m.key).length }}</el-tag>
+                      </div>
+                      <div class="flex items-center gap-2" @click.stop>
+                        <el-switch
+                          :model-value="isModuleEnabled(m.key)"
+                          active-text="启用"
+                          inactive-text="关闭"
+                          @update:model-value="(v) => setModuleEnabled(m.key, v)"
+                        />
+                      </div>
+                    </div>
+                  </template>
+
+	                  <el-tabs v-model="moduleWorkbenchTab[m.key]" type="border-card" class="dqscan-module-tabs">
+	                    <el-tab-pane label="基础参数" name="base">
+	                      <el-card shadow="never" class="dqscan-panel-card">
+	                        <template #header>
+	                          <div class="flex-x-between">
+	                            <div class="font-bold">基础参数</div>
+	                            <el-tag type="info" effect="plain" size="small">模块级</el-tag>
+	                          </div>
+	                        </template>
+
+		                        <div v-if="m.key === 'distribution'">
+		                          <el-form label-width="160px">
+		                            <el-form-item label="对比方式">
+		                              <el-radio-group v-model="distributionCompareMode">
+		                                <el-radio-button label="baseline_file">基线文件对比</el-radio-button>
+		                                <el-radio-button label="in_file_split">仅当前文件（免基线）</el-radio-button>
+		                              </el-radio-group>
+		                            </el-form-item>
+	                            <el-form-item v-if="distributionCompareMode === 'baseline_file'" label="基线文件">
+	                              <div class="flex items-center gap-2">
+	                                <el-tag v-if="baselineUploadedFile" type="success" effect="plain">已上传</el-tag>
+	                                <el-tag v-else type="warning" effect="plain">未上传</el-tag>
+	                                <el-button size="small" @click="gotoStep(1)">去上传</el-button>
+	                                <el-button v-if="baselineUploadedFile" size="small" @click="clearBaseline">清除</el-button>
+	                              </div>
+	                            </el-form-item>
+		                            <el-form-item v-else label="切分比例">
+		                              <el-slider v-model="distributionTrainTestSplit" :min="0.1" :max="0.9" :step="0.05" show-input />
+		                            </el-form-item>
+		                            <el-form-item label="排除字段">
+		                              <el-popover placement="bottom-start" :width="420" trigger="click">
+		                                <template #reference>
+		                                  <el-input :model-value="excludeColumnsDisplay" readonly placeholder="点击选择要排除的列" />
+		                                </template>
+	                                <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
+	                                <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
+	                                <el-scrollbar v-else height="220px">
+	                                  <el-checkbox-group v-model="distributionExcludeColumns" class="flex flex-col gap-1">
+	                                    <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
+	                                  </el-checkbox-group>
+	                                </el-scrollbar>
+	                                <div class="mt-2 flex justify-end gap-2">
+	                                  <el-button size="small" @click="distributionExcludeColumns = []">清空</el-button>
+	                                </div>
+		                              </el-popover>
+		                            </el-form-item>
+		                          </el-form>
+		                        </div>
+
+		                        <div v-else-if="m.key === 'dirty_data'">
+		                          <el-form label-width="160px">
+		                            <el-form-item label="输出样例数">
+		                              <el-input-number v-model="dirtyMaxExamples" :min="10" :max="500" :step="10" />
+		                            </el-form-item>
+		                            <el-form-item label="白名单字段（可选）">
+		                              <el-select v-model="dirtyWhitelistColumns" multiple filterable placeholder="仅对这些字段做脏数据扫描（可选）">
+		                                <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                              </el-select>
+	                            </el-form-item>
+	                            <el-form-item label="黑名单字段（可选）">
+	                              <el-select v-model="dirtyBlacklistColumns" multiple filterable placeholder="跳过这些字段（可选）">
+	                                <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+	                              </el-select>
+	                            </el-form-item>
+		                          </el-form>
+		                        </div>
+
+		                        <div v-else-if="m.key === 'adversarial'">
+		                          <el-form label-width="160px">
+		                            <el-form-item label="最大样本数">
+		                              <el-input-number v-model="adversarialMaxSamples" :min="100" :max="500000" :step="100" />
+		                            </el-form-item>
+		                            <el-form-item label="随机种子">
+	                              <el-input-number v-model="adversarialSeed" :min="0" :max="999999" :step="1" />
+	                            </el-form-item>
+		                          </el-form>
+		                        </div>
+
+		                        <div v-else-if="m.key === 'physics'">
+		                          <el-empty description="该模块的规则/约束参数属于算法参数，请先完成缺陷绑定后再配置。" />
+		                        </div>
+	                      </el-card>
+	                    </el-tab-pane>
+
+	                    <el-tab-pane label="缺陷绑定" name="bind">
+	                      <el-card shadow="never" class="dqscan-panel-card">
+	                        <template #header>
+	                          <div class="flex-x-between">
+	                            <div class="flex items-center gap-2">
+	                              <div class="font-bold">缺陷绑定</div>
+	                              <el-tag type="info" effect="plain" size="small">缺陷→执行算法</el-tag>
+	                            </div>
+	                            <div class="flex items-center gap-2">
+	                              <el-button size="small" @click="autoBindModuleDefects(m.key)">自动分配</el-button>
+	                              <el-button size="small" @click="disableAllModuleDefects(m.key)">全部关闭</el-button>
+	                            </div>
+	                          </div>
+	                        </template>
+
+	                        <el-table
+	                          :data="moduleDefectRows(m.key)"
+	                          border
+	                          size="small"
+	                          style="width: 100%"
+	                          :row-class-name="defectBindRowClassName"
+	                        >
+	                          <el-table-column label="缺陷" min-width="260">
+	                            <template #default="{ row }">
+	                              <div class="flex items-center gap-2">
+	                                <el-tooltip :content="row.desc || row.path" placement="top" :show-after="300">
+	                                  <div :id="`defect-row-${row.key}`" class="font-bold">{{ row.label }}</div>
+	                                </el-tooltip>
+	                                <el-tag v-if="row.badge" :type="row.badge.type" effect="plain" size="small">{{ row.badge.text }}</el-tag>
+	                              </div>
+	                            </template>
+	                          </el-table-column>
+	                          <el-table-column label="状态" width="110">
+	                            <template #default="{ row }">
+	                              <el-tag :type="row.status === 'ready' ? 'success' : 'warning'" effect="plain" size="small">
+	                                {{ row.status === "ready" ? "可用" : "即将上线" }}
+	                              </el-tag>
+	                            </template>
+	                          </el-table-column>
+	                          <el-table-column label="启用" width="110">
+	                            <template #default="{ row }">
+	                              <el-switch
+	                                :model-value="isDefectEnabled(row.key)"
+	                                :disabled="row.status !== 'ready'"
+	                                active-text="启用"
+	                                inactive-text="关闭"
+	                                @update:model-value="(v) => setDefectEnabled(row.key, v)"
+	                              />
+	                            </template>
+	                          </el-table-column>
+	                          <el-table-column label="执行算法" min-width="280">
+	                            <template #default="{ row }">
+	                              <el-select
+	                                :model-value="getDefectExecutor(row.key)"
+	                                filterable
+	                                clearable
+	                                placeholder="选择执行算法"
+	                                style="width: 100%"
+	                                popper-class="dqscan-algo-select-popper"
+	                                :disabled="!isDefectEnabled(row.key) || row.status !== 'ready'"
+	                                @update:model-value="(v) => setDefectExecutor(row.key, v)"
+	                              >
+	                                <el-option
+	                                  v-for="a in executorAlgorithmOptions(row.key)"
+	                                  :key="a.key"
+	                                  :label="a.label"
+	                                  :value="a.key"
+	                                  :disabled="a.status !== 'ready'"
+	                                >
+	                                  <div class="dqscan-algo-option">
+	                                    <div class="dqscan-algo-option-main">
+	                                      <div class="dqscan-algo-option-title">{{ a.label }}</div>
+	                                      <div class="dqscan-algo-option-desc">{{ a.desc }}</div>
+	                                    </div>
+	                                    <el-tag
+	                                      :type="a.status === 'ready' ? 'success' : 'warning'"
+	                                      effect="plain"
+	                                      size="small"
+	                                      class="shrink-0"
+	                                    >
+	                                      {{ a.status === "ready" ? "可用" : "即将上线" }}
+	                                    </el-tag>
+	                                  </div>
+	                                </el-option>
+	                              </el-select>
+	                            </template>
+	                          </el-table-column>
+	                        </el-table>
+	                      </el-card>
+	                    </el-tab-pane>
+
+	                    <el-tab-pane label="算法参数" name="algo_params">
+	                      <el-card shadow="never" class="dqscan-panel-card">
+	                        <template #header>
+	                          <div class="flex-x-between">
+	                            <div class="flex items-center gap-2">
+	                              <div class="font-bold">算法参数</div>
+	                              <el-tag type="info" effect="plain" size="small">按已绑定算法汇总</el-tag>
+	                            </div>
+	                            <el-button size="small" @click="moduleWorkbenchTab[m.key] = 'bind'">回到缺陷绑定</el-button>
+	                          </div>
+	                        </template>
+
+	                        <el-empty v-if="!getModuleAlgorithms(m.key).length" description="请先在“缺陷绑定”里选择执行算法" />
+
+	                        <div v-else>
+	                          <el-card v-for="algoKey in getModuleAlgorithms(m.key)" :key="algoKey" shadow="never" class="mb-3">
+	                            <template #header>
+	                              <div class="flex items-center gap-2">
+	                                <div class="font-bold">{{ algoOptionByKey[algoKey]?.label || algoKey }}</div>
+	                                <el-tag type="success" effect="plain" size="small">可用</el-tag>
+	                                <el-tag type="info" effect="plain" size="small">
+	                                  绑定缺陷 {{ boundDefectCount(m.key, algoKey) }}
+	                                </el-tag>
+	                                <el-tag
+	                                  v-for="dk in boundDefectTags(m.key, algoKey)"
+	                                  :key="`${algoKey}_${dk}`"
+	                                  type="info"
+	                                  effect="plain"
+	                                  size="small"
+	                                >
+	                                  {{ defectIndex.nodeByKey[dk]?.label || dk }}
+	                                </el-tag>
+	                              </div>
+		                            </template>
+		
+		                            <el-form label-width="160px">
+		                              <template v-if="algoKey === 'mmd_ks_chi2'">
+		                                <el-form-item label="显著性水平（p 值阈值）">
+		                                  <el-slider v-model="distributionPVal" :min="0.001" :max="0.2" :step="0.001" show-input />
+		                                </el-form-item>
+		                                <el-form-item v-if="boundDefectKeys(m.key, algoKey).includes('distribution.label_shift')" label="标签列（Label Shift）">
+		                                  <el-select v-model="distributionLabelColumn" clearable filterable placeholder="选择标签列">
+		                                    <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                  </el-select>
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'ecod_3sigma'">
+		                                <template v-if="boundDefectKeys(m.key, algoKey).includes('dirty_data.anomaly')">
+		                                  <el-form-item label="异常率/污染度（contamination）">
+		                                    <el-slider v-model="dirtyContamination" :min="0.001" :max="0.3" :step="0.001" show-input />
+		                                  </el-form-item>
+		                                </template>
+		
+		                                <template v-if="boundDefectKeys(m.key, algoKey).includes('dirty_data.missing')">
+		                                  <el-form-item label="缺失阈值（missing_threshold）">
+		                                    <el-slider v-model="dirtyMissingThreshold" :min="0.01" :max="0.5" :step="0.01" show-input />
+		                                  </el-form-item>
+		                                </template>
+		
+		                                <template v-if="boundDefectKeys(m.key, algoKey).includes('dirty_data.duplicate')">
+		                                  <el-form-item label="重复阈值（duplicate_threshold）">
+		                                    <el-slider v-model="dirtyDuplicateThreshold" :min="0.001" :max="0.5" :step="0.001" show-input />
+		                                  </el-form-item>
+		                                  <el-form-item label="关键列（去重，可选）">
+		                                    <el-select v-model="duplicateKeyColumns" multiple filterable placeholder="用于整行/关键列去重（可选）">
+		                                      <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                    </el-select>
+		                                  </el-form-item>
+		                                </template>
+		
+		                                <template v-if="boundDefectKeys(m.key, algoKey).includes('dirty_data.range')">
+		                                  <el-form-item label="值域检测策略">
+		                                    <el-radio-group v-model="rangeMethod">
+		                                      <el-radio-button label="sigma">3σ</el-radio-button>
+		                                      <el-radio-button label="iqr">IQR</el-radio-button>
+		                                      <el-radio-button label="rules">业务规则</el-radio-button>
+		                                    </el-radio-group>
+		                                  </el-form-item>
+		                                  <el-form-item v-if="rangeMethod === 'sigma'" label="k 值">
+		                                    <el-slider v-model="rangeSigma" :min="1" :max="6" :step="0.5" show-input />
+		                                  </el-form-item>
+		                                  <el-form-item v-else-if="rangeMethod === 'iqr'" label="IQR 因子">
+		                                    <el-slider v-model="rangeIqrFactor" :min="0.5" :max="3" :step="0.1" show-input />
+		                                  </el-form-item>
+		                                  <el-form-item label="仅检查字段（可选）">
+		                                    <el-select v-model="rangeOnlyColumns" multiple filterable placeholder="不选则默认检查全部">
+		                                      <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                    </el-select>
+		                                  </el-form-item>
+		                                </template>
+		
+		                                <el-text type="info">该算法参数仅在绑定该算法的缺陷上生效。</el-text>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'missing_stats_threshold'">
+		                                <el-form-item label="缺失阈值（missing_threshold）">
+		                                  <el-slider v-model="dirtyMissingThreshold" :min="0.01" :max="0.5" :step="0.01" show-input />
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'exact_duplicate'">
+		                                <el-form-item label="重复阈值（duplicate_threshold）">
+		                                  <el-slider v-model="dirtyDuplicateThreshold" :min="0.001" :max="0.5" :step="0.001" show-input />
+		                                </el-form-item>
+		                                <el-form-item label="关键列（去重，可选）">
+		                                  <el-select v-model="duplicateKeyColumns" multiple filterable placeholder="用于整行/关键列去重（可选）">
+		                                    <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                  </el-select>
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'sigma_rule'">
+		                                <el-form-item label="k 值（3σ）">
+		                                  <el-slider v-model="rangeSigma" :min="1" :max="6" :step="0.5" show-input />
+		                                </el-form-item>
+		                                <el-form-item label="仅检查字段（可选）">
+		                                  <el-select v-model="rangeOnlyColumns" multiple filterable placeholder="不选则默认检查全部">
+		                                    <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                  </el-select>
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'zoo_or_random'">
+		                                <el-form-item label="扰动预算（epsilon）">
+		                                  <el-slider v-model="adversarialEpsilon" :min="0.001" :max="0.3" :step="0.001" show-input />
+		                                </el-form-item>
+		                                <el-form-item label="最大迭代（max_iter）">
+		                                  <el-input-number v-model="adversarialMaxIter" :min="1" :max="200" :step="1" />
+		                                </el-form-item>
+		                                <el-form-item label="随机尝试次数">
+		                                  <el-input-number v-model="adversarialRandomTrials" :min="1" :max="500" :step="1" />
+		                                </el-form-item>
+		                                <el-form-item label="随机特征数">
+		                                  <el-input-number v-model="adversarialRandomFeatures" :min="1" :max="200" :step="1" />
+		                                </el-form-item>
+		                                <el-form-item label="学习率">
+		                                  <el-input-number v-model="adversarialLearningRate" :min="0.0001" :max="1" :step="0.001" />
+		                                </el-form-item>
+		                                <el-form-item label="置信度（可选）">
+		                                  <el-input-number v-model="adversarialConfidence" :min="0" :max="100" :step="1" />
+		                                </el-form-item>
+		                                <el-form-item label="Batch Size">
+		                                  <el-input-number v-model="adversarialBatchSize" :min="1" :max="1024" :step="1" />
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'pandera_or_fallback'">
+		                                <el-form-item label="自动推断约束">
+		                                  <el-switch v-model="physicsAutoConstraints" />
+		                                </el-form-item>
+		
+		                                <el-divider class="my-2" />
+		
+		                                <div class="flex-x-between mb-2">
+		                                  <div class="font-bold">字段约束表（可选）</div>
+		                                  <el-button size="small" @click="addPhysicsConstraint">新增约束</el-button>
+		                                </div>
+		                                <el-table :data="physicsConstraints" border size="small">
+		                                  <el-table-column label="字段" min-width="180">
+		                                    <template #default="{ row }">
+		                                      <el-select v-model="row.column" filterable clearable placeholder="选择字段">
+		                                        <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                      </el-select>
+		                                    </template>
+		                                  </el-table-column>
+		                                  <el-table-column label="min" min-width="120">
+		                                    <template #default="{ row }">
+		                                      <el-input-number v-model="row.min" :min="-1e12" :max="1e12" :step="1" />
+		                                    </template>
+		                                  </el-table-column>
+		                                  <el-table-column label="max" min-width="120">
+		                                    <template #default="{ row }">
+		                                      <el-input-number v-model="row.max" :min="-1e12" :max="1e12" :step="1" />
+		                                    </template>
+		                                  </el-table-column>
+		                                  <el-table-column label="操作" width="100">
+		                                    <template #default="{ row }">
+		                                      <el-button size="small" type="danger" @click="removePhysicsConstraint(row.id)">删除</el-button>
+		                                    </template>
+		                                  </el-table-column>
+		                                </el-table>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'cross_constraints'">
+		                                <el-form-item label="启用守恒/一致性校验">
+		                                  <el-switch v-model="physicsCheckConservation" />
+		                                </el-form-item>
+		                              </template>
+		
+		                              <template v-else-if="algoKey === 'psi'">
+		                                <el-form-item label="分箱数">
+		                                  <el-slider v-model="algoParams.psi_bins" :min="5" :max="50" :step="1" show-input />
+		                                </el-form-item>
+		                                <el-form-item label="分箱方式">
+	                                  <el-select v-model="algoParams.psi_bucket" placeholder="选择分箱方式">
+	                                    <el-option label="等频（quantile）" value="quantile" />
+	                                    <el-option label="等宽（uniform）" value="uniform" />
+	                                  </el-select>
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'wasserstein'">
+	                                <el-form-item label="阈值">
+	                                  <el-slider
+	                                    v-model="algoParams.wasserstein_threshold"
+	                                    :min="0"
+	                                    :max="1"
+	                                    :step="0.01"
+	                                    show-input
+	                                  />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'embedding_mmd'">
+	                                <el-form-item label="Embedding 模型">
+	                                  <el-select v-model="algoParams.embedding_model" filterable placeholder="选择模型">
+	                                    <el-option label="通用（small）" value="small" />
+	                                    <el-option label="通用（large）" value="large" />
+	                                  </el-select>
+	                                </el-form-item>
+	                                <el-form-item label="Batch Size">
+	                                  <el-input-number v-model="algoParams.embedding_batch_size" :min="1" :max="1024" :step="8" />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'isolation_forest'">
+	                                <el-form-item label="树数量">
+	                                  <el-input-number v-model="algoParams.iforest_estimators" :min="50" :max="1000" :step="50" />
+	                                </el-form-item>
+	                                <el-form-item label="最大采样">
+	                                  <el-input-number v-model="algoParams.iforest_max_samples" :min="64" :max="100000" :step="64" />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'autoencoder'">
+	                                <el-form-item label="潜变量维度">
+	                                  <el-input-number v-model="algoParams.ae_latent_dim" :min="4" :max="128" :step="4" />
+	                                </el-form-item>
+	                                <el-form-item label="训练轮数">
+	                                  <el-input-number v-model="algoParams.ae_epochs" :min="5" :max="200" :step="5" />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'fgsm'">
+	                                <el-form-item label="范数">
+	                                  <el-select v-model="algoParams.fgsm_norm">
+	                                    <el-option label="L∞" value="linf" />
+	                                    <el-option label="L2" value="l2" />
+	                                  </el-select>
+	                                </el-form-item>
+	                                <el-form-item label="目标攻击">
+	                                  <el-switch v-model="algoParams.fgsm_targeted" />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else-if="algoKey === 'pgd'">
+	                                <el-form-item label="步数">
+	                                  <el-input-number v-model="algoParams.pgd_steps" :min="1" :max="200" :step="5" />
+	                                </el-form-item>
+	                                <el-form-item label="步长">
+	                                  <el-slider v-model="algoParams.pgd_step_size" :min="0.001" :max="0.2" :step="0.001" show-input />
+	                                </el-form-item>
+	                                <el-form-item label="随机初始化">
+	                                  <el-switch v-model="algoParams.pgd_random_start" />
+	                                </el-form-item>
+	                              </template>
+
+	                              <template v-else>
+		                                <el-text type="info">该算法暂无可配置的算法参数。</el-text>
+	                              </template>
+	                            </el-form>
+	                          </el-card>
+	                        </div>
+	                      </el-card>
+	                    </el-tab-pane>
+	                  </el-tabs>
+	                </el-collapse-item>
+              </el-collapse>
             </el-card>
 
             <el-card shadow="never">
@@ -660,7 +1628,7 @@
         <div class="mt-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <el-button icon="refresh" :loading="algorithmsLoading" @click="loadAlgorithms">刷新算法列表</el-button>
-            <el-text type="info">可在右侧为选中的缺陷配置算法与参数</el-text>
+            <el-text type="info">右侧按模块选择算法，并为缺陷绑定“执行算法”</el-text>
           </div>
           <div class="flex items-center gap-2">
             <el-button @click="gotoStep(1)">上一步</el-button>
@@ -1005,17 +1973,33 @@ const selectedModality = ref<string>("tabular");
 	const currentUploading = ref(false);
 	const currentUploadedFile = ref<DQScanUploadOut | null>(null);
 
-const algorithmsLoading = ref(false);
-const algorithms = ref<DQScanAlgorithmOut[]>([]);
-const selectedAlgorithm = ref<string>("tabular_quality_engine");
+	const algorithmsLoading = ref(false);
+	const algorithms = ref<DQScanAlgorithmOut[]>([]);
+	const selectedAlgorithm = ref<string>("tabular_quality_engine");
 
-			const modules = [
-			  { key: "distribution", title: "分布偏差检测", desc: "基线对比 / 免基线切分模拟" },
-			  { key: "dirty_data", title: "脏数据扫描", desc: "异常/缺失/重复/值域违规" },
-			  { key: "adversarial", title: "对抗性检测", desc: "扰动攻击下模型脆弱性评估" },
-			  { key: "physics", title: "物理保真度扫描", desc: "规则/约束一致性校验" },
-			];
+	type ModuleKey = "distribution" | "dirty_data" | "adversarial" | "physics";
+	const modules: { key: ModuleKey; title: string; desc: string }[] = [
+	  { key: "distribution", title: "分布偏差检测", desc: "基线对比 / 免基线切分模拟" },
+	  { key: "dirty_data", title: "脏数据扫描", desc: "异常/缺失/重复/值域违规" },
+	  { key: "adversarial", title: "对抗性检测", desc: "扰动攻击下模型脆弱性评估" },
+	  { key: "physics", title: "物理保真度扫描", desc: "规则/约束一致性校验" },
+	];
 	const selectedModules = ref<string[]>(["dirty_data", "distribution", "adversarial", "physics"]);
+	const openModulePanels = ref<string[]>(modules.map((m) => m.key));
+	const moduleWorkbenchTab = reactive<Record<ModuleKey, "base" | "bind" | "algo_params">>({
+	  dirty_data: "base",
+	  distribution: "base",
+	  adversarial: "base",
+	  physics: "base",
+	});
+
+	function expandAllModulePanels() {
+	  openModulePanels.value = modules.map((m) => m.key);
+	}
+
+	function collapseAllModulePanels() {
+	  openModulePanels.value = [];
+	}
 
 	const starting = ref(false);
 	const taskId = ref<string | null>(null);
@@ -1051,17 +2035,17 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		type AlgoOption = { key: string; label: string; desc: string; status: AlgoOptionStatus };
 		type DefectStatus = AlgoOptionStatus;
 		type DefectBadge = { text: string; type: "success" | "warning" | "info" | "danger" };
-		type DefectTreeNode = {
-		  key: string;
-		  label: string;
-		  desc?: string;
-		  badge?: DefectBadge;
-		  status?: DefectStatus;
-		  disabled?: boolean;
-		  module?: "dirty_data" | "distribution" | "adversarial" | "physics";
-		  algorithms?: AlgoOption[];
-		  children?: DefectTreeNode[];
-		};
+			type DefectTreeNode = {
+			  key: string;
+			  label: string;
+			  desc?: string;
+			  badge?: DefectBadge;
+			  status?: DefectStatus;
+			  disabled?: boolean;
+			  module?: ModuleKey;
+			  algorithms?: AlgoOption[];
+			  children?: DefectTreeNode[];
+			};
 
 		const activeModuleTab = ref<string>("distribution");
 
@@ -1095,8 +2079,8 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 	const dirtyDataAlgorithmOptions: AlgoOption[] = [
 		  {
 		    key: "ecod_3sigma",
-		    label: "ECOD + 3σ",
-		    desc: "优先 ECOD（pyod），无依赖时降级为 3σ 规则。",
+		    label: "通用脏数据扫描器（ECOD + 3σ）",
+		    desc: "一次扫描输出异常/缺失/重复/值域四类信号；有 pyod 则 ECOD，无依赖时降级为 3σ 规则。",
 		    status: "ready",
 		  },
 		  {
@@ -1159,6 +2143,7 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 			];
 
 		const dirtyMissingAlgorithmOptions: AlgoOption[] = [
+		  ...dirtyDataAlgorithmOptions,
 		  {
 		    key: "missing_stats_threshold",
 		    label: "缺失统计 + 阈值",
@@ -1186,6 +2171,7 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		];
 
 		const dirtyDuplicateAlgorithmOptions: AlgoOption[] = [
+		  ...dirtyDataAlgorithmOptions,
 		  {
 		    key: "exact_duplicate",
 		    label: "完全重复检测",
@@ -1213,6 +2199,7 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		];
 
 		const dirtyRangeAlgorithmOptions: AlgoOption[] = [
+		  ...dirtyDataAlgorithmOptions,
 		  { key: "sigma_rule", label: "3σ 规则", desc: "用均值±kσ 的启发式方式发现可疑极值。", status: "ready" },
 		  { key: "iqr_rule", label: "IQR 规则", desc: "对长尾分布更稳健的四分位距方法。", status: "planned" },
 		  { key: "domain_rules", label: "业务规则（min/max/枚举）", desc: "按字段业务约束检查取值范围。", status: "planned" },
@@ -1245,6 +2232,22 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		const globalParallelism = ref(2);
 		const globalSeed = ref(42);
 		const reportOptions = reactive({ docx: true, summary: true, max_examples: 50 });
+		const algoParams = reactive({
+		  psi_bins: 10,
+		  psi_bucket: "quantile",
+		  wasserstein_threshold: 0.1,
+		  embedding_model: "small",
+		  embedding_batch_size: 64,
+		  iforest_estimators: 200,
+		  iforest_max_samples: 256,
+		  ae_latent_dim: 16,
+		  ae_epochs: 20,
+		  fgsm_norm: "linf",
+		  fgsm_targeted: false,
+		  pgd_steps: 20,
+		  pgd_step_size: 0.01,
+		  pgd_random_start: true,
+		});
 
 		const scanPresetLabel = computed(() => {
 		  const map: Record<string, string> = { fast: "快速", balanced: "均衡", thorough: "深度" };
@@ -1564,15 +2567,15 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		const activeDefectKey = ref<string>("dirty_data.anomaly");
 		const activeDefectTab = ref<"algo" | "params" | "output">("algo");
 
-		function createDefaultDefectAlgorithms(): Record<string, string[]> {
-		  return {
-		    "dirty_data.anomaly": ["ecod_3sigma"],
-		    "dirty_data.missing": ["missing_stats_threshold"],
-		    "dirty_data.duplicate": ["exact_duplicate"],
-		    "dirty_data.range": ["sigma_rule"],
-		    "dirty_data.label_mismatch": [],
-		    "distribution.numeric_drift": ["mmd_ks_chi2"],
-		    "distribution.categorical_drift": ["mmd_ks_chi2"],
+			function createDefaultDefectAlgorithms(): Record<string, string[]> {
+			  return {
+			    "dirty_data.anomaly": ["ecod_3sigma"],
+			    "dirty_data.missing": ["ecod_3sigma"],
+			    "dirty_data.duplicate": ["ecod_3sigma"],
+			    "dirty_data.range": ["ecod_3sigma"],
+			    "dirty_data.label_mismatch": [],
+			    "distribution.numeric_drift": ["mmd_ks_chi2"],
+			    "distribution.categorical_drift": ["mmd_ks_chi2"],
 		    "distribution.label_shift": ["mmd_ks_chi2"],
 		    "distribution.embedding_drift": [],
 		    "adversarial.blackbox": ["zoo_or_random"],
@@ -1606,11 +2609,339 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		  return Array.from(new Set(checkedDefectKeys.value));
 		}
 
-		function moduleKeyFromDefectKey(key: string): "dirty_data" | "distribution" | "adversarial" | "physics" | null {
-		  const prefix = key.split(".")[0];
-		  if (prefix === "dirty_data" || prefix === "distribution" || prefix === "adversarial" || prefix === "physics") return prefix;
-		  return null;
-		}
+			function moduleKeyFromDefectKey(key: string): ModuleKey | null {
+			  const prefix = key.split(".")[0];
+			  if (prefix === "dirty_data" || prefix === "distribution" || prefix === "adversarial" || prefix === "physics") return prefix;
+			  return null;
+			}
+
+			type ModuleAlgoSelection = Record<ModuleKey, string[]>;
+
+			function createDefaultModuleAlgorithms(): ModuleAlgoSelection {
+			  return {
+			    dirty_data: ["ecod_3sigma"],
+			    distribution: ["mmd_ks_chi2"],
+			    adversarial: ["zoo_or_random"],
+			    physics: ["pandera_or_fallback", "cross_constraints"],
+			  };
+			}
+
+			const moduleAlgorithmsSelected = ref<ModuleAlgoSelection>(createDefaultModuleAlgorithms());
+
+			function createDefaultDefectExecutors(): Record<string, string | null> {
+			  return {
+			    "dirty_data.anomaly": "ecod_3sigma",
+			    "dirty_data.missing": "ecod_3sigma",
+			    "dirty_data.duplicate": "ecod_3sigma",
+			    "dirty_data.range": "ecod_3sigma",
+			    "dirty_data.label_mismatch": null,
+			    "distribution.numeric_drift": "mmd_ks_chi2",
+			    "distribution.categorical_drift": "mmd_ks_chi2",
+			    "distribution.label_shift": "mmd_ks_chi2",
+			    "distribution.embedding_drift": null,
+			    "adversarial.blackbox": "zoo_or_random",
+			    "adversarial.whitebox": null,
+			    "adversarial.sensitivity": null,
+			    "physics.schema": "pandera_or_fallback",
+			    "physics.conservation": "cross_constraints",
+			    "physics.temporal": null,
+			  };
+			}
+
+			const defectExecutor = ref<Record<string, string | null>>(createDefaultDefectExecutors());
+
+			const recommendedDefectsByModule: Record<ModuleKey, string[]> = {
+			  dirty_data: ["dirty_data.anomaly", "dirty_data.missing", "dirty_data.duplicate", "dirty_data.range"],
+			  distribution: ["distribution.numeric_drift", "distribution.categorical_drift"],
+			  adversarial: ["adversarial.blackbox"],
+			  physics: ["physics.schema", "physics.conservation"],
+			};
+
+			const executorPreferenceByDefect: Record<string, string[]> = {
+			  "dirty_data.anomaly": ["ecod_3sigma"],
+			  "dirty_data.missing": ["missing_stats_threshold", "ecod_3sigma"],
+			  "dirty_data.duplicate": ["exact_duplicate", "ecod_3sigma"],
+			  "dirty_data.range": ["sigma_rule", "ecod_3sigma"],
+			  "distribution.numeric_drift": ["mmd_ks_chi2", "psi", "wasserstein"],
+			  "distribution.categorical_drift": ["mmd_ks_chi2", "psi"],
+			  "distribution.label_shift": ["mmd_ks_chi2", "psi"],
+			  "adversarial.blackbox": ["zoo_or_random"],
+			  "adversarial.whitebox": ["fgsm", "pgd", "cw"],
+			  "physics.schema": ["pandera_or_fallback"],
+			  "physics.conservation": ["cross_constraints"],
+			  "physics.temporal": ["temporal_rules"],
+			};
+
+			const algoOptionByKey = computed<Record<string, AlgoOption>>(() => {
+			  const out: Record<string, AlgoOption> = {};
+			  for (const n of Object.values(defectIndex.value.nodeByKey)) {
+			    for (const a of n.algorithms || []) {
+			      const existing = out[a.key];
+			      if (!existing) {
+			        out[a.key] = a;
+			        continue;
+			      }
+			      if (existing.status === "planned" && a.status === "ready") out[a.key] = a;
+			    }
+			  }
+			  return out;
+			});
+
+			const moduleAlgorithmOptionsByModule = computed<Record<ModuleKey, AlgoOption[]>>(() => {
+			  const out: Record<ModuleKey, Map<string, AlgoOption>> = {
+			    dirty_data: new Map(),
+			    distribution: new Map(),
+			    adversarial: new Map(),
+			    physics: new Map(),
+			  };
+
+			  for (const defectKey of defectIndex.value.leafKeys) {
+			    const meta = defectIndex.value.nodeByKey[defectKey];
+			    const moduleKey = meta?.module || moduleKeyFromDefectKey(defectKey);
+			    if (!moduleKey || !meta?.algorithms?.length) continue;
+			    const map = out[moduleKey];
+			    for (const a of meta.algorithms) {
+			      const existing = map.get(a.key);
+			      if (!existing) map.set(a.key, a);
+			      else if (existing.status === "planned" && a.status === "ready") map.set(a.key, a);
+			    }
+			  }
+
+			  const normalize = (map: Map<string, AlgoOption>) =>
+			    Array.from(map.values()).sort((a, b) => {
+			      if (a.status !== b.status) return a.status === "ready" ? -1 : 1;
+			      return a.label.localeCompare(b.label);
+			    });
+
+			  return {
+			    dirty_data: normalize(out.dirty_data),
+			    distribution: normalize(out.distribution),
+			    adversarial: normalize(out.adversarial),
+			    physics: normalize(out.physics),
+			  };
+			});
+
+			function moduleAlgorithmOptions(moduleKey: ModuleKey): AlgoOption[] {
+			  return moduleAlgorithmOptionsByModule.value[moduleKey] || [];
+			}
+
+			function getModuleAlgorithms(moduleKey: ModuleKey): string[] {
+			  const enabled = new Set(checkedDefectKeys.value);
+			  const algoKeys = new Set<string>();
+			  for (const defectKey of moduleLeafDefectKeys(moduleKey)) {
+			    if (!enabled.has(defectKey)) continue;
+			    const meta = defectIndex.value.nodeByKey[defectKey];
+			    if (!meta || meta.status !== "ready") continue;
+			    const executor = defectExecutor.value[defectKey];
+			    if (!executor) continue;
+			    if (algoOptionByKey.value[executor]?.status === "planned") continue;
+			    algoKeys.add(executor);
+			  }
+			  const labelOf = (k: string) => algoOptionByKey.value[k]?.label || k;
+			  return Array.from(algoKeys).sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+			}
+
+			function boundDefectKeys(moduleKey: ModuleKey, algoKey: string): string[] {
+			  const enabled = new Set(checkedDefectKeys.value);
+			  const out: string[] = [];
+			  for (const defectKey of moduleLeafDefectKeys(moduleKey)) {
+			    if (!enabled.has(defectKey)) continue;
+			    const meta = defectIndex.value.nodeByKey[defectKey];
+			    if (!meta || meta.status !== "ready") continue;
+			    const executor = defectExecutor.value[defectKey];
+			    if (!executor) continue;
+			    if (executor === algoKey) out.push(defectKey);
+			  }
+			  return out;
+			}
+
+			function boundDefectCount(moduleKey: ModuleKey, algoKey: string): number {
+			  return boundDefectKeys(moduleKey, algoKey).length;
+			}
+
+			function boundDefectTags(moduleKey: ModuleKey, algoKey: string): string[] {
+			  return boundDefectKeys(moduleKey, algoKey).slice(0, 4);
+			}
+
+			function setModuleAlgorithms(moduleKey: ModuleKey, v: string[]) {
+			  const allowedReady = new Set(moduleAlgorithmOptions(moduleKey).filter((a) => a.status === "ready").map((a) => a.key));
+			  const filtered = (v || []).filter((x) => allowedReady.has(x));
+			  moduleAlgorithmsSelected.value[moduleKey] = Array.from(new Set(filtered));
+			  autoBindModuleDefects(moduleKey);
+			}
+
+			function clearModuleAlgorithms(moduleKey: ModuleKey) {
+			  moduleAlgorithmsSelected.value[moduleKey] = [];
+			  autoBindModuleDefects(moduleKey);
+			}
+
+			function applyRecommendedModuleAlgorithms(moduleKey: ModuleKey) {
+			  const presets: Record<ModuleKey, string[]> = {
+			    dirty_data: ["ecod_3sigma", "missing_stats_threshold", "exact_duplicate", "sigma_rule"],
+			    distribution: ["mmd_ks_chi2"],
+			    adversarial: ["zoo_or_random"],
+			    physics: ["pandera_or_fallback", "cross_constraints"],
+			  };
+			  setModuleAlgorithms(moduleKey, presets[moduleKey] || []);
+			}
+
+			const moduleAlgorithmCoverage = computed<Record<ModuleKey, Record<string, string[]>>>(() => {
+			  const out: Record<ModuleKey, Record<string, Set<string>>> = {
+			    dirty_data: {},
+			    distribution: {},
+			    adversarial: {},
+			    physics: {},
+			  };
+
+			  for (const defectKey of defectIndex.value.leafKeys) {
+			    const meta = defectIndex.value.nodeByKey[defectKey];
+			    if (!meta?.algorithms?.length) continue;
+			    const moduleKey = meta.module || moduleKeyFromDefectKey(defectKey);
+			    if (!moduleKey) continue;
+			    for (const a of meta.algorithms) {
+			      out[moduleKey][a.key] ||= new Set();
+			      out[moduleKey][a.key].add(defectKey);
+			    }
+			  }
+
+			  const toList = (s: Set<string>) => Array.from(s);
+			  return {
+			    dirty_data: Object.fromEntries(Object.entries(out.dirty_data).map(([k, v]) => [k, toList(v)])),
+			    distribution: Object.fromEntries(Object.entries(out.distribution).map(([k, v]) => [k, toList(v)])),
+			    adversarial: Object.fromEntries(Object.entries(out.adversarial).map(([k, v]) => [k, toList(v)])),
+			    physics: Object.fromEntries(Object.entries(out.physics).map(([k, v]) => [k, toList(v)])),
+			  };
+			});
+
+			function algorithmCoverageDefects(moduleKey: ModuleKey, algoKey: string): string[] {
+			  const defects = moduleAlgorithmCoverage.value[moduleKey]?.[algoKey] || [];
+			  return defects.slice(0, 6);
+			}
+
+			function moduleLeafDefectKeys(moduleKey: ModuleKey): string[] {
+			  return defectIndex.value.leafKeys.filter((k) => moduleKeyFromDefectKey(k) === moduleKey);
+			}
+
+			function moduleAllDefectCount(moduleKey: ModuleKey): number {
+			  return moduleLeafDefectKeys(moduleKey).length;
+			}
+
+			function moduleEnabledDefectCount(moduleKey: ModuleKey): number {
+			  const keys = new Set(moduleLeafDefectKeys(moduleKey));
+			  return checkedDefectKeys.value.filter((k) => keys.has(k)).length;
+			}
+
+			function isModuleEnabled(moduleKey: ModuleKey): boolean {
+			  return selectedModules.value.includes(moduleKey);
+			}
+
+			function setModuleEnabled(moduleKey: ModuleKey, enabled: boolean) {
+			  if (!enabled) {
+			    const toRemove = new Set(moduleLeafDefectKeys(moduleKey));
+			    setCheckedDefects(checkedDefectKeys.value.filter((k) => !toRemove.has(k)));
+			    return;
+			  }
+
+			  const metaReady = (k: string) => defectIndex.value.nodeByKey[k]?.status === "ready";
+			  const defaults = (recommendedDefectsByModule[moduleKey] || []).filter((k) => metaReady(k));
+			  setCheckedDefects(Array.from(new Set([...checkedDefectKeys.value, ...defaults])));
+			  autoBindModuleDefects(moduleKey);
+			}
+
+			function disableAllModuleDefects(moduleKey: ModuleKey) {
+			  setModuleEnabled(moduleKey, false);
+			}
+
+			function executorAlgorithmOptions(defectKey: string): AlgoOption[] {
+			  const meta = defectIndex.value.nodeByKey[defectKey];
+			  if (!meta?.algorithms?.length) return [];
+			  const map = new Map<string, AlgoOption>();
+			  for (const a of meta.algorithms) {
+			    const existing = map.get(a.key);
+			    if (!existing) map.set(a.key, a);
+			    else if (existing.status === "planned" && a.status === "ready") map.set(a.key, a);
+			  }
+			  return Array.from(map.values()).sort((a, b) => {
+			    if (a.status !== b.status) return a.status === "ready" ? -1 : 1;
+			    return a.label.localeCompare(b.label);
+			  });
+			}
+
+			function getDefectExecutor(defectKey: string): string {
+			  return defectExecutor.value[defectKey] || "";
+			}
+
+			function setDefectExecutor(defectKey: string, algoKey: string | null | undefined) {
+			  const meta = defectIndex.value.nodeByKey[defectKey];
+			  if (!meta || meta.status !== "ready") return;
+			  if (!algoKey) {
+			    defectExecutor.value[defectKey] = null;
+			    return;
+			  }
+			  const allowed = new Set(executorAlgorithmOptions(defectKey).map((a) => a.key));
+			  if (!allowed.has(algoKey)) return;
+			  if (algoOptionByKey.value[algoKey]?.status === "planned") return;
+			  defectExecutor.value[defectKey] = algoKey;
+			}
+
+			function chooseExecutorForDefect(defectKey: string): string | null {
+			  const opts = executorAlgorithmOptions(defectKey);
+			  if (!opts.length) return null;
+			  const statusByKey = new Map(opts.map((x) => [x.key, x.status] as const));
+			  const pref = executorPreferenceByDefect[defectKey] || [];
+			  for (const k of pref) {
+			    if (statusByKey.get(k) === "ready") return k;
+			  }
+			  const readyFirst = opts.find((x) => x.status === "ready")?.key;
+			  return readyFirst || null;
+			}
+
+			function autoBindModuleDefects(moduleKey: ModuleKey) {
+			  const defectKeys = moduleLeafDefectKeys(moduleKey);
+			  for (const dk of defectKeys) {
+			    const meta = defectIndex.value.nodeByKey[dk];
+			    if (!meta || meta.status !== "ready") continue;
+			    const current = defectExecutor.value[dk];
+			    const allowed = new Set(executorAlgorithmOptions(dk).map((a) => a.key));
+			    if (current && allowed.has(current)) continue;
+			    defectExecutor.value[dk] = chooseExecutorForDefect(dk);
+			  }
+			}
+
+			type ModuleDefectRow = {
+			  key: string;
+			  label: string;
+			  desc?: string;
+			  status: DefectStatus;
+			  path: string;
+			  badge?: DefectBadge;
+			};
+
+			function moduleDefectRows(moduleKey: ModuleKey): ModuleDefectRow[] {
+			  const rows = moduleLeafDefectKeys(moduleKey)
+			    .map((k) => {
+			      const meta = defectIndex.value.nodeByKey[k];
+			      return {
+			        key: k,
+			        label: meta?.label || k,
+			        desc: meta?.desc,
+			        status: meta?.status || "ready",
+			        path: defectIndex.value.pathByKey[k]?.join(" / ") || "",
+			        badge: meta?.badge,
+			      } as ModuleDefectRow;
+			    })
+			    .filter((r) => !!r.key);
+
+			  const enabledSet = new Set(checkedDefectKeys.value);
+			  const filtered = showOnlyEnabledDefects.value ? rows.filter((r) => enabledSet.has(r.key)) : rows;
+			  return filtered.sort((a, b) => {
+			    const ae = enabledSet.has(a.key);
+			    const be = enabledSet.has(b.key);
+			    if (ae !== be) return ae ? -1 : 1;
+			    if (a.status !== b.status) return a.status === "ready" ? -1 : 1;
+			    return a.label.localeCompare(b.label);
+			  });
+			}
 
 		function syncDerivedFromChecked(keys: string[]) {
 		  const moduleSet = new Set<string>();
@@ -1630,17 +2961,21 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		  dirtyEnabledChecks.value = Array.from(dirtyChecks);
 		}
 
-		function setCheckedDefects(keys: string[]) {
-		  const uniq = Array.from(new Set(keys));
-		  const tree = defectTreeRef.value;
-		  if (tree?.setCheckedKeys) {
-		    tree.setCheckedKeys(uniq);
-		    checkedDefectKeys.value = getCheckedLeafKeys();
-		  } else {
-		    checkedDefectKeys.value = uniq;
-		  }
-		  syncDerivedFromChecked(checkedDefectKeys.value);
-		}
+			function setCheckedDefects(keys: string[]) {
+			  const uniq = Array.from(new Set(keys));
+			  const tree = defectTreeRef.value;
+			  if (tree?.setCheckedKeys) {
+			    tree.setCheckedKeys(uniq);
+			    checkedDefectKeys.value = getCheckedLeafKeys();
+			  } else {
+			    checkedDefectKeys.value = uniq;
+			  }
+			  syncDerivedFromChecked(checkedDefectKeys.value);
+			  for (const mk of selectedModules.value) {
+			    if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+			    autoBindModuleDefects(mk);
+			  }
+			}
 
 		const activeDefectAlgorithms = computed<string[]>({
 		  get() {
@@ -1676,14 +3011,65 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		  },
 		});
 
-		const selectedLeafDefectCount = computed(() => checkedDefectKeys.value.length);
-		const selectedDefectAlgorithmCount = computed(() => {
-		  let total = 0;
-		  for (const k of checkedDefectKeys.value) {
-		    total += (defectAlgorithms.value[k] || []).length;
-		  }
-		  return total;
-		});
+				const selectedLeafDefectCount = computed(() => checkedDefectKeys.value.length);
+				const selectedDefectAlgorithmCount = computed(() => {
+				  const set = new Set<string>();
+				  for (const mk of selectedModules.value) {
+				    if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+				    for (const a of getModuleAlgorithms(mk)) set.add(a);
+				  }
+				  return set.size;
+				});
+
+				const missingExecutorDefects = computed(() => {
+				  const out: string[] = [];
+				  for (const defectKey of checkedDefectKeys.value) {
+				    const meta = defectIndex.value.nodeByKey[defectKey];
+				    if (!meta || meta.status !== "ready") continue;
+				    if (!defectExecutor.value[defectKey]) out.push(defectKey);
+				  }
+				  return out;
+				});
+
+				const baselineMissing = computed(() => {
+				  if (!selectedModules.value.includes("distribution")) return false;
+				  if (distributionCompareMode.value !== "baseline_file") return false;
+				  return !baselineUploadedFile.value?.file_id;
+				});
+
+				const labelShiftMissingColumn = computed(() => {
+				  if (!checkedDefectKeys.value.includes("distribution.label_shift")) return false;
+				  const executor = defectExecutor.value["distribution.label_shift"];
+				  if (!executor) return false;
+				  if (executor !== "mmd_ks_chi2") return false;
+				  return !distributionLabelColumn.value;
+				});
+
+				const configIssuesHint = computed(() => {
+				  const issues: string[] = [];
+
+				  if (baselineMissing.value) {
+				    issues.push("分布偏差选择了“基线文件对比”，但基线文件未上传（可回到上传步骤补齐，或切换到免基线模式）。");
+				  }
+
+				  if (missingExecutorDefects.value.length) {
+				    const labels = missingExecutorDefects.value.map((k) => defectIndex.value.nodeByKey[k]?.label || k);
+				    const short = labels.length <= 3 ? labels.join("、") : `${labels.slice(0, 3).join("、")} 等`;
+				    issues.push(`有 ${labels.length} 个已启用缺陷未绑定执行算法：${short}`);
+				  }
+
+				  if (labelShiftMissingColumn.value) {
+				    issues.push("已启用“标签分布变化”，请在“算法参数”中选择标签列。");
+				  }
+
+				  return issues.join("；");
+				});
+
+				function defectBindRowClassName({ row }: { row: ModuleDefectRow }): string {
+				  if (!isDefectEnabled(row.key)) return "";
+				  if (!getDefectExecutor(row.key)) return "dqscan-row-missing-executor";
+				  return "";
+				}
 
 		const selectedModulesDisplay = computed(() => {
 		  if (!selectedModules.value.length) return "未选择";
@@ -1700,44 +3086,190 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		  return `${labels.slice(0, 4).join("、")} 等${labels.length}项`;
 		});
 
-		const selectedAlgorithmsDisplay = computed(() => {
-		  const algoLabelMap: Record<string, string> = {};
-		  for (const n of Object.values(defectIndex.value.nodeByKey)) {
-		    for (const a of n.algorithms || []) {
-		      if (!algoLabelMap[a.key]) algoLabelMap[a.key] = a.label;
-		    }
-		  }
-		  const algoKeys = new Set<string>();
-		  for (const defectKey of checkedDefectKeys.value) {
-		    for (const a of defectAlgorithms.value[defectKey] || []) algoKeys.add(a);
-		  }
-		  const labels = Array.from(algoKeys)
-		    .map((k) => algoLabelMap[k] || k)
-		    .filter((x) => !!x);
-		  if (!labels.length) return "未选择";
-		  if (labels.length <= 3) return labels.join("、");
-		  return `${labels.slice(0, 3).join("、")} 等${labels.length}项`;
-		});
+			const selectedAlgorithmsDisplay = computed(() => {
+			  const algoLabelMap: Record<string, string> = {};
+			  for (const a of Object.values(algoOptionByKey.value)) {
+			    if (!algoLabelMap[a.key]) algoLabelMap[a.key] = a.label;
+			  }
+			  const algoKeys = new Set<string>();
+			  for (const mk of selectedModules.value) {
+			    if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+			    for (const a of getModuleAlgorithms(mk)) algoKeys.add(a);
+			  }
+			  const labels = Array.from(algoKeys)
+			    .map((k) => algoLabelMap[k] || k)
+			    .filter((x) => !!x);
+			  if (!labels.length) return "未选择";
+			  if (labels.length <= 3) return labels.join("、");
+			  return `${labels.slice(0, 3).join("、")} 等${labels.length}项`;
+			});
 
-		function firstLeafKeyOf(node: DefectTreeNode): string | null {
-		  if (!node.children?.length) return node.key;
-		  for (const c of node.children) {
+			const showOnlyEnabledDefects = ref(false);
+			const openDefectPanels = ref<string[]>([...defaultCheckedDefectKeys]);
+
+			const algoMetaByKey = computed(() => {
+			  const out: Record<string, { label: string; status: AlgoOptionStatus }> = {};
+			  for (const n of Object.values(defectIndex.value.nodeByKey)) {
+			    for (const a of n.algorithms || []) {
+			      if (!out[a.key]) out[a.key] = { label: a.label, status: a.status };
+			    }
+			  }
+			  return out;
+			});
+
+			const plannedAlgorithmsSelected = computed(() => {
+			  const planned = new Set<string>();
+			  for (const defectKey of checkedDefectKeys.value) {
+			    for (const a of defectAlgorithms.value[defectKey] || []) {
+			      if (algoMetaByKey.value[a]?.status === "planned") planned.add(a);
+			    }
+			  }
+			  return Array.from(planned);
+			});
+
+			const plannedAlgorithmsSelectedHint = computed(() => {
+			  const labels = plannedAlgorithmsSelected.value.map((k) => algoMetaByKey.value[k]?.label || k);
+			  if (!labels.length) return "";
+			  const short = labels.length <= 4 ? labels.join("、") : `${labels.slice(0, 4).join("、")} 等`;
+			  return `已选择 ${labels.length} 个即将上线算法，本次运行将自动跳过：${short}`;
+			});
+
+			function defectMeta(defectKey: string): DefectTreeNode | null {
+			  const node = defectIndex.value.nodeByKey[defectKey];
+			  if (!node || !node.algorithms) return null;
+			  return node;
+			}
+
+			function defectPathText(defectKey: string): string {
+			  const path = defectIndex.value.pathByKey[defectKey];
+			  return path?.length ? path.join(" / ") : "-";
+			}
+
+			const visibleDefectKeys = computed(() => {
+			  const all = defectIndex.value.leafKeys.filter((k) => !!defectIndex.value.nodeByKey[k]?.algorithms);
+			  const q = defectSearch.value.trim().toLowerCase();
+			  let keys = all;
+			  if (showOnlyEnabledDefects.value) keys = keys.filter((k) => checkedDefectKeys.value.includes(k));
+			  if (q) {
+			    keys = keys.filter((k) => {
+			      const node = defectIndex.value.nodeByKey[k];
+			      const hay = `${node?.label || ""} ${node?.desc || ""}`.toLowerCase();
+			      return hay.includes(q);
+			    });
+			  }
+			  return keys;
+			});
+
+			watch(
+			  visibleDefectKeys,
+			  (keys) => {
+			    const set = new Set(keys);
+			    openDefectPanels.value = openDefectPanels.value.filter((k) => set.has(k));
+			  },
+			  { immediate: true }
+			);
+
+			function expandAllDefectPanels() {
+			  openDefectPanels.value = [...visibleDefectKeys.value];
+			}
+
+			function collapseAllDefectPanels() {
+			  openDefectPanels.value = [];
+			}
+
+			function isDefectEnabled(defectKey: string): boolean {
+			  return checkedDefectKeys.value.includes(defectKey);
+			}
+
+			function setDefectEnabled(defectKey: string, enabled: boolean) {
+			  const meta = defectMeta(defectKey);
+			  if (!meta || meta.status !== "ready") return;
+
+			  const tree = defectTreeRef.value;
+			  if (tree?.setChecked) {
+			    tree.setChecked(defectKey, !!enabled, true);
+			    checkedDefectKeys.value = getCheckedLeafKeys();
+			  } else {
+			    const set = new Set(checkedDefectKeys.value);
+			    if (enabled) set.add(defectKey);
+			    else set.delete(defectKey);
+			    checkedDefectKeys.value = Array.from(set);
+				  }
+				  syncDerivedFromChecked(checkedDefectKeys.value);
+				  if (enabled) {
+				    const mk = moduleKeyFromDefectKey(defectKey);
+				    if (mk) autoBindModuleDefects(mk);
+				  }
+
+				  if (enabled && !openDefectPanels.value.includes(defectKey)) {
+				    openDefectPanels.value.push(defectKey);
+				  }
+				}
+
+			function getDefectAlgorithms(defectKey: string): string[] {
+			  return defectAlgorithms.value[defectKey] || [];
+			}
+
+			function setDefectAlgorithms(defectKey: string, v: string[]) {
+			  const allowed = new Set((defectMeta(defectKey)?.algorithms || []).map((a) => a.key));
+			  const filtered = (v || []).filter((x) => allowed.has(x));
+			  defectAlgorithms.value[defectKey] = Array.from(new Set(filtered));
+			}
+
+			function clearDefectAlgorithms(defectKey: string) {
+			  setDefectAlgorithms(defectKey, []);
+			}
+
+			function applyAlgorithmsToModule(sourceDefectKey: string) {
+			  const moduleKey = moduleKeyFromDefectKey(sourceDefectKey);
+			  if (!moduleKey) return;
+			  const source = getDefectAlgorithms(sourceDefectKey);
+			  const targets = defectIndex.value.leafKeys.filter((k) => moduleKeyFromDefectKey(k) === moduleKey);
+			  for (const k of targets) {
+			    if (!checkedDefectKeys.value.includes(k)) continue;
+			    const allowed = new Set((defectMeta(k)?.algorithms || []).map((a) => a.key));
+			    const filtered = source.filter((x) => allowed.has(x));
+			    defectAlgorithms.value[k] = Array.from(new Set(filtered));
+			  }
+			}
+
+			function firstLeafKeyOf(node: DefectTreeNode): string | null {
+			  if (!node.children?.length) return node.key;
+			  for (const c of node.children) {
 		    const leaf = firstLeafKeyOf(c);
 		    if (leaf) return leaf;
 		  }
 		  return null;
 		}
 
-		function onDefectNodeClick(data: DefectTreeNode) {
-		  const leafKey = firstLeafKeyOf(data);
-		  if (!leafKey) return;
-		  activeDefectKey.value = leafKey;
-		}
+			function onDefectNodeClick(data: DefectTreeNode) {
+			  const leafKey = firstLeafKeyOf(data);
+			  if (!leafKey) return;
+			  activeDefectKey.value = leafKey;
+			  if (showOnlyEnabledDefects.value && !checkedDefectKeys.value.includes(leafKey)) {
+			    showOnlyEnabledDefects.value = false;
+			  }
+			  const moduleKey = moduleKeyFromDefectKey(leafKey);
+			  if (moduleKey && !openModulePanels.value.includes(moduleKey)) {
+			    openModulePanels.value.push(moduleKey);
+			  }
+			  if (moduleKey) {
+			    moduleWorkbenchTab[moduleKey] = "bind";
+			  }
+			  nextTick(() => {
+			    const el = document.getElementById(`defect-row-${leafKey}`);
+			    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+			  });
+			}
 
-		function onDefectCheck() {
-		  checkedDefectKeys.value = getCheckedLeafKeys();
-		  syncDerivedFromChecked(checkedDefectKeys.value);
-		}
+			function onDefectCheck() {
+			  checkedDefectKeys.value = getCheckedLeafKeys();
+			  syncDerivedFromChecked(checkedDefectKeys.value);
+			  for (const mk of selectedModules.value) {
+			    if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+			    autoBindModuleDefects(mk);
+			  }
+			}
 
 		function filterDefectNode(value: string, data: DefectTreeNode) {
 		  if (!value) return true;
@@ -1777,8 +3309,12 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 			const dirtyMaxExamples = ref(50);
 			const dirtyWhitelistColumns = ref<string[]>([]);
 			const dirtyBlacklistColumns = ref<string[]>([]);
-			syncDerivedFromChecked(checkedDefectKeys.value);
-			const duplicateKeyColumns = ref<string[]>([]);
+				syncDerivedFromChecked(checkedDefectKeys.value);
+				for (const mk of selectedModules.value) {
+				  if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+				  autoBindModuleDefects(mk);
+				}
+				const duplicateKeyColumns = ref<string[]>([]);
 			const duplicateSimilarity = ref(0.92);
 			const rangeMethod = ref<"sigma" | "iqr" | "rules">("sigma");
 		const rangeSigma = ref(3);
@@ -1828,6 +3364,9 @@ const selectedAlgorithm = ref<string>("tabular_quality_engine");
 		    !!currentUploadedFile.value?.file_id &&
 		    !!selectedAlgorithm.value &&
 		    selectedLeafDefectCount.value > 0 &&
+		    !baselineMissing.value &&
+		    !labelShiftMissingColumn.value &&
+		    missingExecutorDefects.value.length === 0 &&
 		    !starting.value
 		);
 	const resultReady = computed(() => taskStatus.value === "SUCCESS" && !!result.value);
@@ -1914,18 +3453,34 @@ function clearPoll() {
 		  baselineUploadedFile.value = null;
 		  currentFileList.value = [];
 		  currentSelectedFile.value = null;
-			  currentUploading.value = false;
-			  currentUploadedFile.value = null;
-			  defectSearch.value = "";
-			  scanPreset.value = "balanced";
-			  globalMaxSamples.value = 20000;
+				  currentUploading.value = false;
+				  currentUploadedFile.value = null;
+				  defectSearch.value = "";
+				  showOnlyEnabledDefects.value = false;
+				  openDefectPanels.value = [...defaultCheckedDefectKeys];
+				  scanPreset.value = "balanced";
+				  globalMaxSamples.value = 20000;
 			  globalParallelism.value = 2;
-			  globalSeed.value = 42;
-			  reportOptions.docx = true;
-			  reportOptions.summary = true;
-			  reportOptions.max_examples = 50;
-			  defectAlgorithms.value = createDefaultDefectAlgorithms();
-			  checkedDefectKeys.value = [...defaultCheckedDefectKeys];
+				  globalSeed.value = 42;
+				  reportOptions.docx = true;
+				  reportOptions.summary = true;
+				  reportOptions.max_examples = 50;
+				  algoParams.psi_bins = 10;
+				  algoParams.psi_bucket = "quantile";
+				  algoParams.wasserstein_threshold = 0.1;
+				  algoParams.embedding_model = "small";
+				  algoParams.embedding_batch_size = 64;
+				  algoParams.iforest_estimators = 200;
+				  algoParams.iforest_max_samples = 256;
+				  algoParams.ae_latent_dim = 16;
+				  algoParams.ae_epochs = 20;
+				  algoParams.fgsm_norm = "linf";
+				  algoParams.fgsm_targeted = false;
+				  algoParams.pgd_steps = 20;
+				  algoParams.pgd_step_size = 0.01;
+				  algoParams.pgd_random_start = true;
+				  defectAlgorithms.value = createDefaultDefectAlgorithms();
+				  checkedDefectKeys.value = [...defaultCheckedDefectKeys];
 			  setCheckedDefects(checkedDefectKeys.value);
 			  activeDefectKey.value = "dirty_data.anomaly";
 			  activeDefectTab.value = "algo";
@@ -2237,6 +3792,19 @@ async function refreshTask() {
 
 			async function startScan() {
 		  if (!currentUploadedFile.value?.file_id) return;
+		  if (baselineMissing.value) {
+		    ElMessage.warning("已选择“基线文件对比”，但基线文件未上传。请回到上传步骤补齐，或切换到“免基线”模式。");
+		    gotoStep(1);
+		    return;
+		  }
+		  if (labelShiftMissingColumn.value) {
+		    ElMessage.warning("已启用“标签分布变化”，请先在“算法参数”中选择标签列。");
+		    return;
+		  }
+		  if (missingExecutorDefects.value.length) {
+		    ElMessage.warning("还有已启用缺陷未绑定执行算法，请在“缺陷绑定”中完成选择。");
+		    return;
+		  }
 			  starting.value = true;
 			  result.value = null;
 			  reports.value = {};
@@ -2255,38 +3823,46 @@ async function refreshTask() {
 		          new Set(enabledDefects.map((k) => moduleKeyFromDefectKey(k)).filter((x): x is string => !!x))
 		        );
 
-		    const moduleAlgorithms = (() => {
-		      const out: Record<string, Set<string>> = {
-		        distribution: new Set<string>(),
-		        dirty_data: new Set<string>(),
-		        adversarial: new Set<string>(),
-		        physics: new Set<string>(),
-		      };
-		      for (const defectKey of enabledDefects) {
-		        const moduleKey = moduleKeyFromDefectKey(defectKey);
-		        if (!moduleKey) continue;
-		        for (const a of defectAlgorithms.value[defectKey] || []) out[moduleKey].add(a);
-		      }
-		      const toList = (set: Set<string>, fallback: string[]) => (set.size ? Array.from(set) : fallback);
-		      return {
-		        distribution: toList(out.distribution, distributionAlgorithms.value),
-		        dirty_data: toList(out.dirty_data, dirtyDataAlgorithms.value),
-		        adversarial: toList(out.adversarial, adversarialAlgorithms.value),
-		        physics: toList(out.physics, physicsAlgorithms.value),
-		      };
-		    })();
+				    const effectiveModuleSet = new Set(effectiveModules as string[]);
+				    const moduleAlgorithmsAll: Record<ModuleKey, string[]> = {
+				      dirty_data: effectiveModuleSet.has("dirty_data") ? getModuleAlgorithms("dirty_data") : [],
+				      distribution: effectiveModuleSet.has("distribution") ? getModuleAlgorithms("distribution") : [],
+				      adversarial: effectiveModuleSet.has("adversarial") ? getModuleAlgorithms("adversarial") : [],
+				      physics: effectiveModuleSet.has("physics") ? getModuleAlgorithms("physics") : [],
+				    };
 
-		    const params: Record<string, any> = {
-		      modules: effectiveModules.length ? effectiveModules : undefined,
-		      module_algorithms: moduleAlgorithms,
-		      runtime: {
-		        preset: scanPreset.value,
-		        max_samples: globalMaxSamples.value,
-		        parallelism: globalParallelism.value,
-		        seed: globalSeed.value,
-		      },
-		      report: { ...reportOptions },
-		    };
+				    const isPlannedAlgo = (algoKey: string) => algoOptionByKey.value[algoKey]?.status === "planned";
+				    const runtimeList = (list: string[]) => list.filter((a) => !isPlannedAlgo(a));
+				    const skippedList = (list: string[]) => list.filter((a) => isPlannedAlgo(a));
+
+				    const moduleAlgorithmsRuntime: Record<ModuleKey, string[]> = {
+				      dirty_data: runtimeList(moduleAlgorithmsAll.dirty_data),
+				      distribution: runtimeList(moduleAlgorithmsAll.distribution),
+				      adversarial: runtimeList(moduleAlgorithmsAll.adversarial),
+				      physics: runtimeList(moduleAlgorithmsAll.physics),
+				    };
+
+				    const moduleAlgorithmsSkipped: Record<ModuleKey, string[]> = {
+				      dirty_data: skippedList(moduleAlgorithmsAll.dirty_data),
+				      distribution: skippedList(moduleAlgorithmsAll.distribution),
+				      adversarial: skippedList(moduleAlgorithmsAll.adversarial),
+				      physics: skippedList(moduleAlgorithmsAll.physics),
+				    };
+
+				    const params: Record<string, any> = {
+				      modules: effectiveModules.length ? effectiveModules : undefined,
+				      module_algorithms: moduleAlgorithmsAll,
+				      module_algorithms_runtime: moduleAlgorithmsRuntime,
+				      module_algorithms_skipped: moduleAlgorithmsSkipped,
+				      runtime: {
+				        preset: scanPreset.value,
+				        max_samples: globalMaxSamples.value,
+				        parallelism: globalParallelism.value,
+			        seed: globalSeed.value,
+			      },
+			      report: { ...reportOptions },
+			      algorithms_config: { ...toRaw(algoParams) },
+			    };
 
 		    if (effectiveModules.includes("distribution")) {
 		      params.distribution_compare_mode = distributionCompareMode.value;
@@ -2357,14 +3933,20 @@ async function refreshTask() {
 		      };
 		    }
 
-		    const defectsPayload: Record<string, any> = {};
-		    for (const defectKey of enabledDefects) {
-		      const meta = defectIndex.value.nodeByKey[defectKey];
-		      const moduleKey = moduleKeyFromDefectKey(defectKey);
-		      const buildParamsFor = () => {
-		        if (defectKey === "dirty_data.anomaly") {
-		          return { contamination: dirtyContamination.value, max_examples: dirtyMaxExamples.value, max_samples: globalMaxSamples.value };
-		        }
+			    const defectsPayload: Record<string, any> = {};
+				    for (const defectKey of enabledDefects) {
+				      const meta = defectIndex.value.nodeByKey[defectKey];
+				      const moduleKey = moduleKeyFromDefectKey(defectKey);
+				      if (!moduleKey) continue;
+				      const executorSelected = defectExecutor.value[defectKey] || null;
+				      const algorithmsSelected = executorSelected ? [executorSelected] : [];
+				      const algorithmsRuntime = executorSelected && !isPlannedAlgo(executorSelected) ? [executorSelected] : [];
+				      const algorithmsSkipped = executorSelected && isPlannedAlgo(executorSelected) ? [executorSelected] : [];
+				      const executorRuntime = executorSelected && !isPlannedAlgo(executorSelected) ? executorSelected : null;
+				      const buildParamsFor = () => {
+				        if (defectKey === "dirty_data.anomaly") {
+				          return { contamination: dirtyContamination.value, max_examples: dirtyMaxExamples.value, max_samples: globalMaxSamples.value };
+				        }
 		        if (defectKey === "dirty_data.missing") {
 		          return {
 		            missing_threshold: dirtyMissingThreshold.value,
@@ -2437,27 +4019,32 @@ async function refreshTask() {
 		        }
 		        return {};
 		      };
-		      defectsPayload[defectKey] = {
-		        enabled: true,
-		        status: meta?.status || "ready",
-		        module: moduleKey,
-		        label: meta?.label,
-		        path: defectIndex.value.pathByKey[defectKey]?.join(" / "),
-		        algorithms: defectAlgorithms.value[defectKey] || [],
-		        params: buildParamsFor(),
-		      };
-		    }
+				      defectsPayload[defectKey] = {
+				        enabled: true,
+				        status: meta?.status || "ready",
+				        module: moduleKey,
+				        label: meta?.label,
+				        path: defectIndex.value.pathByKey[defectKey]?.join(" / "),
+				        algorithms: algorithmsSelected,
+				        algorithms_runtime: algorithmsRuntime,
+				        algorithms_skipped: algorithmsSkipped,
+				        executor_algorithm: executorSelected,
+				        executor_runtime: executorRuntime,
+				        params: buildParamsFor(),
+				      };
+				    }
 
-		    params.defects = {
-		      preset: scanPreset.value,
-		      global: {
-		        max_samples: globalMaxSamples.value,
-		        parallelism: globalParallelism.value,
-		        seed: globalSeed.value,
-		      },
-		      report: { ...reportOptions },
-		      selected: defectsPayload,
-		    };
+			    params.defects = {
+			      preset: scanPreset.value,
+			      global: {
+			        max_samples: globalMaxSamples.value,
+			        parallelism: globalParallelism.value,
+			        seed: globalSeed.value,
+			      },
+			      report: { ...reportOptions },
+			      algorithms_config: { ...toRaw(algoParams) },
+			      selected: defectsPayload,
+			    };
 
 		    const baselineFileId =
 		      effectiveModules.includes("distribution") && distributionCompareMode.value === "baseline_file"
@@ -3003,6 +4590,51 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-primary);
 }
 
+.dqscan-defect-workbench :deep(.el-collapse-item__header) {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.dqscan-defect-workbench :deep(.el-collapse-item__content) {
+  padding: 12px 10px 18px;
+}
+
+.dqscan-module-workbench :deep(.el-collapse-item__header) {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.dqscan-module-workbench :deep(.el-collapse-item__content) {
+  padding: 12px 10px 18px;
+}
+
+.dqscan-module-tabs :deep(.el-tabs__content) {
+  padding: 10px;
+}
+
+.dqscan-module-tabs :deep(.el-tabs__item) {
+  height: 44px;
+  line-height: 44px;
+  font-weight: 700;
+}
+
+.dqscan-panel-card {
+  border-radius: 12px;
+}
+
+.dqscan-collapse-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+
+.dqscan-collapse-title-text {
+  font-weight: 800;
+  color: var(--el-text-color-primary);
+}
+
 .dqscan-config-tabs :deep(.el-tabs__content) {
   padding-left: 8px;
 }
@@ -3041,5 +4673,9 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.4;
   color: var(--el-text-color-secondary);
+}
+
+.dqscan-module-tabs :deep(.dqscan-row-missing-executor td) {
+  background-color: var(--el-color-danger-light-9);
 }
 </style>

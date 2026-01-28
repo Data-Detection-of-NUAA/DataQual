@@ -48,6 +48,16 @@ class TabularDirtyScanner(BaseScanner):
         data: Any,
         numerical_columns: Optional[list[str]] = None,
         categorical_columns: Optional[list[str]] = None,
+        *,
+        enabled_checks: Optional[list[str]] = None,
+        missing_threshold: Optional[float] = None,
+        duplicate_threshold: Optional[float] = None,
+        duplicate_key_columns: Optional[list[str]] = None,
+        range_method: str = "sigma",
+        range_sigma: float = 3.0,
+        range_iqr_factor: float = 1.5,
+        range_only_columns: Optional[list[str]] = None,
+        max_examples: int = 50,
     ) -> dict[str, Any]:
         if not PANDAS_AVAILABLE:
             return self._error_result("pandas未安装，请先安装 pandas/numpy 依赖")
@@ -63,6 +73,14 @@ class TabularDirtyScanner(BaseScanner):
         if categorical_columns is None:
             categorical_columns = data.select_dtypes(exclude=[np.number]).columns.tolist()
 
+        max_examples = int(max(10, min(int(max_examples or 50), 500)))
+        enabled_checks = [str(x) for x in enabled_checks] if enabled_checks else []
+        enable_all = not enabled_checks
+        check_anomaly = enable_all or "anomaly" in enabled_checks
+        check_missing = enable_all or "missing" in enabled_checks
+        check_duplicate = enable_all or "duplicate" in enabled_checks
+        check_range = enable_all or "range" in enabled_checks
+
         results: dict[str, Any] = {
             "algorithm": "ECOD + 3σ Rule" if PYOD_AVAILABLE else "3σ Rule (Fallback - pyod未安装)",
             "total_samples": len(data),
@@ -72,64 +90,104 @@ class TabularDirtyScanner(BaseScanner):
         }
 
         # 1) 异常值（outliers）
-        anomaly_results = self._detect_anomalies(data, numerical_columns)
+        anomaly_results = self._detect_anomalies(data, numerical_columns) if check_anomaly else {"anomaly_rate": 0.0}
         results["anomaly_detection"] = anomaly_results
 
         # 2) 缺失值（missing values）
-        missing_results = self._detect_missing(data)
+        missing_results = (
+            self._detect_missing(data, threshold=missing_threshold) if check_missing else {"missing_rate": 0.0}
+        )
         results["missing_values"] = missing_results
 
         # 3) 重复数据（duplicate rows）
-        duplicate_results = self._detect_duplicates(data)
+        duplicate_results = (
+            self._detect_duplicates(data, key_columns=duplicate_key_columns)
+            if check_duplicate
+            else {"duplicate_rate": 0.0}
+        )
         results["duplicates"] = duplicate_results
 
         # 4) 简单范围违规（每列均值±3σ）
-        range_results = self._detect_range_violations(data, numerical_columns)
+        range_results = (
+            self._detect_range_violations(
+                data,
+                numerical_columns,
+                method=range_method,
+                sigma=range_sigma,
+                iqr_factor=range_iqr_factor,
+                only_columns=range_only_columns,
+            )
+            if check_range
+            else {"total_violations": 0, "violations_by_column": {}}
+        )
         results["range_violations"] = range_results
 
         results["anomaly_rate"] = float(anomaly_results.get("anomaly_rate", 0.0) or 0.0)
         results["missing_rate"] = float(missing_results.get("missing_rate", 0.0) or 0.0)
         results["duplicate_rate"] = float(duplicate_results.get("duplicate_rate", 0.0) or 0.0)
 
+        missing_flag = bool(missing_results.get("has_issues", results["missing_rate"] > 0))
+        if duplicate_threshold is not None:
+            try:
+                dup_thresh = float(duplicate_threshold)
+            except Exception:
+                dup_thresh = None
+        else:
+            dup_thresh = None
+        duplicate_flag = bool(duplicate_results.get("has_issues", results["duplicate_rate"] > 0))
+        if dup_thresh is not None:
+            duplicate_flag = results["duplicate_rate"] >= dup_thresh
+        results["duplicate_threshold"] = dup_thresh
         results["has_issues"] = bool(
-            results["anomaly_rate"] > 0 or results["missing_rate"] > 0 or results["duplicate_rate"] > 0
+            (results["anomaly_rate"] > 0 if check_anomaly else False)
+            or (missing_flag if check_missing else False)
+            or (duplicate_flag if check_duplicate else False)
+            or (range_results.get("total_violations", 0) > 0 if check_range else False)
         )
 
         detailed_issues: list[dict[str, Any]] = []
         total_issues = 0
+        remaining_examples = max_examples
 
-        anomaly_indices = anomaly_results.get("anomaly_indices") or []
-        total_issues += len(anomaly_indices)
-        for idx in anomaly_indices[:50]:
-            detailed_issues.append(
-                {
-                    "data_id": f"row_{idx}",
-                    "issue_type": "异常值",
-                    "severity": "moderate" if results["anomaly_rate"] > 0.1 else "light",
-                    "details": {"affected_fields": numerical_columns},
-                }
-            )
+        if check_anomaly:
+            anomaly_indices = anomaly_results.get("anomaly_indices") or []
+            total_issues += len(anomaly_indices)
+            take = min(len(anomaly_indices), remaining_examples)
+            for idx in anomaly_indices[:take]:
+                detailed_issues.append(
+                    {
+                        "data_id": f"row_{idx}",
+                        "issue_type": "异常值",
+                        "severity": "moderate" if results["anomaly_rate"] > 0.1 else "light",
+                        "details": {"affected_fields": numerical_columns},
+                    }
+                )
+            remaining_examples -= take
 
-        missing_by_column = (missing_results.get("missing_by_column") or {}) if isinstance(missing_results, dict) else {}
-        for col_name, col_info in list(missing_by_column.items())[:20]:
-            count = int(col_info.get("count", 0) or 0)
-            rate = float(col_info.get("rate", 0.0) or 0.0)
-            total_issues += count
-            detailed_issues.append(
-                {
-                    "data_id": f"column_{col_name}",
-                    "issue_type": "缺失值",
-                    "severity": "severe" if rate > 0.15 else "light",
-                    "details": {"missing_count": count},
-                }
-            )
+        if check_missing and remaining_examples > 0:
+            missing_by_column = (missing_results.get("missing_by_column") or {}) if isinstance(missing_results, dict) else {}
+            for col_name, col_info in list(missing_by_column.items())[:remaining_examples]:
+                count = int(col_info.get("count", 0) or 0)
+                rate = float(col_info.get("rate", 0.0) or 0.0)
+                total_issues += count
+                detailed_issues.append(
+                    {
+                        "data_id": f"column_{col_name}",
+                        "issue_type": "缺失值",
+                        "severity": "severe" if rate > 0.15 else "light",
+                        "details": {"missing_count": count},
+                    }
+                )
+                remaining_examples -= 1
 
-        dup_indices = duplicate_results.get("duplicate_indices") or []
-        total_issues += len(dup_indices)
-        for idx in dup_indices[:30]:
-            detailed_issues.append(
-                {"data_id": f"row_{idx}", "issue_type": "重复数据", "severity": "light", "details": {}}
-            )
+        if check_duplicate and remaining_examples > 0:
+            dup_indices = duplicate_results.get("duplicate_indices") or []
+            total_issues += len(dup_indices)
+            for idx in dup_indices[:remaining_examples]:
+                detailed_issues.append(
+                    {"data_id": f"row_{idx}", "issue_type": "重复数据", "severity": "light", "details": {}}
+                )
+                remaining_examples -= 1
 
         results["total_issues"] = int(total_issues)
         results["issue_percentage"] = float(total_issues / len(data)) if len(data) > 0 else 0.0
@@ -183,44 +241,93 @@ class TabularDirtyScanner(BaseScanner):
         except Exception as e:
             return {"method": "3σ Rule", "error": str(e), "anomaly_count": 0, "anomaly_rate": 0.0}
 
-    def _detect_missing(self, data: "pd.DataFrame") -> dict[str, Any]:
+    def _detect_missing(self, data: "pd.DataFrame", *, threshold: Optional[float] = None) -> dict[str, Any]:
         missing_counts = data.isnull().sum()
         total_missing = int(missing_counts.sum())
         missing_by_column: dict[str, dict[str, Any]] = {}
+        over_threshold: list[str] = []
         for col, count in missing_counts.items():
             if int(count) > 0:
-                missing_by_column[str(col)] = {"count": int(count), "rate": float(count / len(data))}
+                rate = float(count / len(data))
+                missing_by_column[str(col)] = {"count": int(count), "rate": rate}
+                if threshold is not None and rate >= float(threshold):
+                    over_threshold.append(str(col))
         return {
             "total_missing": total_missing,
             "missing_rate": float(total_missing / (len(data) * max(len(data.columns), 1))),
             "columns_with_missing": len(missing_by_column),
             "missing_by_column": missing_by_column,
+            "missing_threshold": float(threshold) if threshold is not None else None,
+            "columns_over_threshold": over_threshold,
+            "has_issues": bool(over_threshold) if threshold is not None else total_missing > 0,
         }
 
-    def _detect_duplicates(self, data: "pd.DataFrame") -> dict[str, Any]:
-        exact_duplicates = data.duplicated(keep=False)
+    def _detect_duplicates(
+        self, data: "pd.DataFrame", *, key_columns: Optional[list[str]] = None
+    ) -> dict[str, Any]:
+        subset = None
+        if key_columns:
+            available = [c for c in key_columns if c in data.columns]
+            if available:
+                subset = available
+        exact_duplicates = data.duplicated(subset=subset, keep=False)
         duplicate_count = int(exact_duplicates.sum())
         duplicate_indices = np.where(exact_duplicates)[0].tolist()
         return {
             "duplicate_count": duplicate_count,
             "duplicate_rate": float(duplicate_count / len(data)) if len(data) else 0.0,
             "duplicate_indices": duplicate_indices[:100],
+            "key_columns": subset or [],
+            "has_issues": duplicate_count > 0,
         }
 
-    def _detect_range_violations(self, data: "pd.DataFrame", numerical_columns: list[str]) -> dict[str, Any]:
+    def _detect_range_violations(
+        self,
+        data: "pd.DataFrame",
+        numerical_columns: list[str],
+        *,
+        method: str = "sigma",
+        sigma: float = 3.0,
+        iqr_factor: float = 1.5,
+        only_columns: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
         violations: dict[str, Any] = {}
         total_violations = 0
-        for col in numerical_columns:
+        target_columns = numerical_columns
+        if only_columns:
+            only_set = {c for c in only_columns if c in data.columns}
+            target_columns = [c for c in numerical_columns if c in only_set]
+        for col in target_columns:
             values = data[col].dropna()
             if len(values) == 0:
                 continue
-            mean, std = values.mean(), values.std()
-            if std == 0:
-                continue
-            lower_bound = mean - 3 * std
-            upper_bound = mean + 3 * std
+            method_lower = method.lower().strip() if method else "sigma"
+            if method_lower == "iqr":
+                q1 = values.quantile(0.25)
+                q3 = values.quantile(0.75)
+                iqr = q3 - q1
+                if iqr == 0:
+                    continue
+                lower_bound = q1 - float(iqr_factor) * iqr
+                upper_bound = q3 + float(iqr_factor) * iqr
+            else:
+                mean, std = values.mean(), values.std()
+                if std == 0:
+                    continue
+                k = float(sigma or 3.0)
+                lower_bound = mean - k * std
+                upper_bound = mean + k * std
             violating = data[(data[col] < lower_bound) | (data[col] > upper_bound)].index.tolist()
             if len(violating) > 0:
-                violations[str(col)] = {"count": len(violating), "bounds": [float(lower_bound), float(upper_bound)]}
+                violations[str(col)] = {
+                    "count": len(violating),
+                    "bounds": [float(lower_bound), float(upper_bound)],
+                }
                 total_violations += len(violating)
-        return {"total_violations": int(total_violations), "violations_by_column": violations}
+        return {
+            "total_violations": int(total_violations),
+            "violations_by_column": violations,
+            "method": method_lower,
+            "sigma": float(sigma),
+            "iqr_factor": float(iqr_factor),
+        }
