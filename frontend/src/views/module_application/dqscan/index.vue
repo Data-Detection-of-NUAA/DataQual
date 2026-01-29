@@ -633,28 +633,70 @@
                       </el-form>
                     </div>
 
-                    <div v-else-if="defectKey === 'dirty_data.label_mismatch'">
-                      <el-form label-width="160px">
-                        <el-form-item label="标签列">
-                          <el-select v-model="labelMismatchLabelColumn" filterable clearable placeholder="选择标签列">
-                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
-                          </el-select>
-                        </el-form-item>
-                        <el-form-item label="抽样上限">
-                          <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
-                        </el-form-item>
-                        <el-form-item label="置信度阈值">
-                          <el-slider v-model="labelMismatchConfidence" :min="0.5" :max="0.99" :step="0.01" show-input />
-                        </el-form-item>
-                        <el-form-item label="交叉验证折数">
-                          <el-input-number v-model="labelMismatchFolds" :min="2" :max="10" :step="1" />
-                        </el-form-item>
-                        <el-form-item label="输出样例数">
-                          <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
-                        </el-form-item>
-                      </el-form>
-                      <el-text type="info" class="block mt-2">该能力后端对接后即可生效。</el-text>
-                    </div>
+	                    <div v-else-if="defectKey === 'dirty_data.label_mismatch'">
+	                      <el-form label-width="160px">
+	                        <el-form-item label="标签列">
+	                          <el-select v-model="labelMismatchLabelColumn" filterable clearable placeholder="选择标签列">
+	                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+	                          </el-select>
+	                        </el-form-item>
+	                        <el-form-item label="排除字段">
+	                          <el-popover placement="bottom-start" :width="420" trigger="click">
+	                            <template #reference>
+	                              <el-input :model-value="labelMismatchExcludeColumnsDisplay" readonly placeholder="点击选择要排除的列" />
+	                            </template>
+	                            <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
+	                            <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
+	                            <el-scrollbar v-else height="220px">
+	                              <el-checkbox-group v-model="labelMismatchExcludeColumns" class="flex flex-col gap-1">
+	                                <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
+	                              </el-checkbox-group>
+	                            </el-scrollbar>
+	                            <div class="mt-2 flex justify-end gap-2">
+	                              <el-button size="small" @click="labelMismatchExcludeColumns = []">清空</el-button>
+	                            </div>
+	                          </el-popover>
+	                          <el-text type="info" class="block mt-2">建议排除 id/uuid/时间戳等高基数字段，避免模型“记住样本”。</el-text>
+	                        </el-form-item>
+	                        <el-form-item label="抽样上限">
+	                          <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
+	                        </el-form-item>
+	                        <el-form-item label="交叉验证折数">
+	                          <el-input-number v-model="labelMismatchNSplits" :min="2" :max="10" :step="1" />
+	                        </el-form-item>
+	                        <el-form-item label="P(给定标签)阈值">
+	                          <el-slider v-model="labelMismatchThresholdProbTrue" :min="0" :max="0.8" :step="0.01" show-input />
+	                        </el-form-item>
+	                        <el-form-item label="P(建议标签)阈值">
+	                          <el-slider v-model="labelMismatchThresholdProbPred" :min="0.2" :max="0.99" :step="0.01" show-input />
+	                        </el-form-item>
+	                        <el-form-item label="Score 方法">
+	                          <el-select v-model="labelMismatchScoreMethod" placeholder="选择打分方式">
+	                            <el-option label="self_confidence（默认）" value="self_confidence" />
+	                            <el-option label="normalized_margin" value="normalized_margin" />
+	                            <el-option label="confidence_weighted_entropy" value="confidence_weighted_entropy" />
+	                          </el-select>
+	                        </el-form-item>
+	                        <el-form-item label="筛选策略">
+	                          <el-select v-model="labelMismatchFilterBy" placeholder="选择筛选策略">
+	                            <el-option label="both（推荐）" value="both" />
+	                            <el-option label="prune_by_class" value="prune_by_class" />
+	                            <el-option label="prune_by_noise_rate" value="prune_by_noise_rate" />
+	                            <el-option label="confident_learning（仅高置信冲突）" value="confident_learning" />
+	                          </el-select>
+	                        </el-form-item>
+	                        <el-form-item label="fraction_noise">
+	                          <el-slider v-model="labelMismatchFractionNoise" :min="0" :max="0.3" :step="0.005" show-input />
+	                          <el-text type="info" class="block mt-2">控制“按类剪枝”候选集规模（越小越严格）。</el-text>
+	                        </el-form-item>
+	                        <el-form-item label="输出样例数">
+	                          <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
+	                        </el-form-item>
+	                      </el-form>
+	                      <el-text type="info" class="block mt-2">
+	                        支持 `confident_learning`（推荐）与 `cv_consistency` 两档算法；结果为“人工复核候选集”。
+	                      </el-text>
+	                    </div>
 
                     <div
                       v-else-if="
@@ -922,30 +964,71 @@
                       </el-form>
                     </div>
 
-                    <div v-else-if="activeDefectKey === 'dirty_data.label_mismatch'">
-                      <el-form label-width="160px">
-                        <el-form-item label="标签列">
-                          <el-select v-model="labelMismatchLabelColumn" filterable clearable placeholder="选择标签列">
-                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
-                          </el-select>
-                          <el-text type="info" class="block mt-2">
-                            用于检测“疑似错标”样本（例如猫被标成狗）。该能力后端对接后即可生效。
-                          </el-text>
-                        </el-form-item>
-                        <el-form-item label="抽样上限">
-                          <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
-                        </el-form-item>
-                        <el-form-item label="置信度阈值">
-                          <el-slider v-model="labelMismatchConfidence" :min="0.5" :max="0.99" :step="0.01" show-input />
-                        </el-form-item>
-                        <el-form-item label="交叉验证折数">
-                          <el-input-number v-model="labelMismatchFolds" :min="2" :max="10" :step="1" />
-                        </el-form-item>
-                        <el-form-item label="输出样例数">
-                          <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
-                        </el-form-item>
-                      </el-form>
-                    </div>
+	                    <div v-else-if="activeDefectKey === 'dirty_data.label_mismatch'">
+	                      <el-form label-width="160px">
+	                        <el-form-item label="标签列">
+	                          <el-select v-model="labelMismatchLabelColumn" filterable clearable placeholder="选择标签列">
+	                            <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+	                          </el-select>
+	                          <el-text type="info" class="block mt-2">用于检测“疑似错标”样本（例如猫被标成狗）。</el-text>
+	                        </el-form-item>
+	                        <el-form-item label="排除字段">
+	                          <el-popover placement="bottom-start" :width="420" trigger="click">
+	                            <template #reference>
+	                              <el-input :model-value="labelMismatchExcludeColumnsDisplay" readonly placeholder="点击选择要排除的列" />
+	                            </template>
+	                            <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
+	                            <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
+	                            <el-scrollbar v-else height="220px">
+	                              <el-checkbox-group v-model="labelMismatchExcludeColumns" class="flex flex-col gap-1">
+	                                <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
+	                              </el-checkbox-group>
+	                            </el-scrollbar>
+	                            <div class="mt-2 flex justify-end gap-2">
+	                              <el-button size="small" @click="labelMismatchExcludeColumns = []">清空</el-button>
+	                            </div>
+	                          </el-popover>
+	                          <el-text type="info" class="block mt-2">建议排除 id/uuid/时间戳等高基数字段，避免模型“记住样本”。</el-text>
+	                        </el-form-item>
+	                        <el-form-item label="抽样上限">
+	                          <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
+	                        </el-form-item>
+	                        <el-form-item label="交叉验证折数">
+	                          <el-input-number v-model="labelMismatchNSplits" :min="2" :max="10" :step="1" />
+	                        </el-form-item>
+	                        <el-form-item label="P(给定标签)阈值">
+	                          <el-slider v-model="labelMismatchThresholdProbTrue" :min="0" :max="0.8" :step="0.01" show-input />
+	                        </el-form-item>
+	                        <el-form-item label="P(建议标签)阈值">
+	                          <el-slider v-model="labelMismatchThresholdProbPred" :min="0.2" :max="0.99" :step="0.01" show-input />
+	                        </el-form-item>
+	                        <el-form-item label="Score 方法">
+	                          <el-select v-model="labelMismatchScoreMethod" placeholder="选择打分方式">
+	                            <el-option label="self_confidence（默认）" value="self_confidence" />
+	                            <el-option label="normalized_margin" value="normalized_margin" />
+	                            <el-option label="confidence_weighted_entropy" value="confidence_weighted_entropy" />
+	                          </el-select>
+	                        </el-form-item>
+	                        <el-form-item label="筛选策略">
+	                          <el-select v-model="labelMismatchFilterBy" placeholder="选择筛选策略">
+	                            <el-option label="both（推荐）" value="both" />
+	                            <el-option label="prune_by_class" value="prune_by_class" />
+	                            <el-option label="prune_by_noise_rate" value="prune_by_noise_rate" />
+	                            <el-option label="confident_learning（仅高置信冲突）" value="confident_learning" />
+	                          </el-select>
+	                        </el-form-item>
+	                        <el-form-item label="fraction_noise">
+	                          <el-slider v-model="labelMismatchFractionNoise" :min="0" :max="0.3" :step="0.005" show-input />
+	                          <el-text type="info" class="block mt-2">控制“按类剪枝”候选集规模（越小越严格）。</el-text>
+	                        </el-form-item>
+	                        <el-form-item label="输出样例数">
+	                          <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
+	                        </el-form-item>
+	                      </el-form>
+	                      <el-text type="info" class="block mt-2">
+	                        支持 `confident_learning`（推荐）与 `cv_consistency` 两档算法；结果为“人工复核候选集”。
+	                      </el-text>
+	                    </div>
 
                     <div v-else-if="activeDefectKey === 'distribution.numeric_drift' || activeDefectKey === 'distribution.categorical_drift'">
                       <el-form label-width="160px">
@@ -1834,11 +1917,12 @@
                             <el-table-column prop="drift" label="漂移检测" width="90" />
                           </template>
 
-                          <template v-else-if="activeReportModuleType === 'dirty_data'">
-                            <el-table-column prop="anomalyRate" label="异常率" width="90" />
-                            <el-table-column prop="missingRate" label="缺失率" width="90" />
-                            <el-table-column prop="duplicateRate" label="重复率" width="90" />
-                          </template>
+	                          <template v-else-if="activeReportModuleType === 'dirty_data'">
+	                            <el-table-column prop="anomalyRate" label="异常率" width="90" />
+	                            <el-table-column prop="missingRate" label="缺失率" width="90" />
+	                            <el-table-column prop="duplicateRate" label="重复率" width="90" />
+	                            <el-table-column prop="labelMismatchRate" label="疑似错标率" width="110" />
+	                          </template>
 
                           <template v-else-if="activeReportModuleType === 'adversarial'">
                             <el-table-column prop="attackSuccessRate" label="攻击成功率" width="110" />
@@ -2024,12 +2108,18 @@ const selectedModality = ref<string>("tabular");
 	const columnOptions = ref<string[]>([]);
 	const columnsLoading = ref(false);
 	const columnsError = ref<string | null>(null);
-		const excludeColumnsDisplay = computed(() => {
-		  const n = distributionExcludeColumns.value.length;
-		  if (n === 0) return "未选择（默认不排除）";
-		  if (n <= 3) return distributionExcludeColumns.value.join(", ");
-		  return `${distributionExcludeColumns.value.slice(0, 3).join(", ")} 等${n}项`;
-		});
+			const excludeColumnsDisplay = computed(() => {
+			  const n = distributionExcludeColumns.value.length;
+			  if (n === 0) return "未选择（默认不排除）";
+			  if (n <= 3) return distributionExcludeColumns.value.join(", ");
+			  return `${distributionExcludeColumns.value.slice(0, 3).join(", ")} 等${n}项`;
+			});
+			const labelMismatchExcludeColumnsDisplay = computed(() => {
+			  const n = labelMismatchExcludeColumns.value.length;
+			  if (n === 0) return "未选择（建议排除 id/uuid 等高基数字段）";
+			  if (n <= 3) return labelMismatchExcludeColumns.value.join(", ");
+			  return `${labelMismatchExcludeColumns.value.slice(0, 3).join(", ")} 等${n}项`;
+			});
 
 		type AlgoOptionStatus = "ready" | "planned";
 		type AlgoOption = { key: string; label: string; desc: string; status: AlgoOptionStatus };
@@ -2206,26 +2296,32 @@ const selectedModality = ref<string>("tabular");
 		  { key: "schema_constraints", label: "Schema 约束联动", desc: "与 Pandera/规则库联动，统一落地字段约束。", status: "planned" },
 		];
 
-		const labelMismatchAlgorithmOptions: AlgoOption[] = [
-		  {
-		    key: "cv_consistency",
-		    label: "交叉验证一致性",
-		    desc: "通过交叉验证训练并找出“模型强烈不认可的标签”样本。",
-		    status: "planned",
-		  },
-		  {
-		    key: "embedding_knn",
-		    label: "Embedding + KNN 近邻一致性",
-		    desc: "在特征/embedding 空间中检查近邻标签一致性，发现疑似错标。",
-		    status: "planned",
-		  },
-		  {
-		    key: "confidence_margin",
-		    label: "置信度边界样本",
-		    desc: "识别高不确定样本与置信度异常样本，辅助人工复核。",
-		    status: "planned",
-		  },
-		];
+			const labelMismatchAlgorithmOptions: AlgoOption[] = [
+			  {
+			    key: "confident_learning",
+			    label: "Confident Learning（错标候选集）",
+			    desc: "基于 out-of-fold 概率的 label quality score + 按类剪枝，输出疑似错标候选集与混淆方向。",
+			    status: "ready",
+			  },
+			  {
+			    key: "cv_consistency",
+			    label: "交叉验证一致性",
+			    desc: "通过交叉验证训练并找出“模型强烈不认可的标签”样本。",
+			    status: "ready",
+			  },
+			  {
+			    key: "embedding_knn",
+			    label: "Embedding + KNN 近邻一致性",
+			    desc: "在特征/embedding 空间中检查近邻标签一致性，发现疑似错标。",
+			    status: "planned",
+			  },
+			  {
+			    key: "confidence_margin",
+			    label: "置信度边界样本",
+			    desc: "识别高不确定样本与置信度异常样本，辅助人工复核。",
+			    status: "planned",
+			  },
+			];
 
 		const scanPreset = ref<"fast" | "balanced" | "thorough">("balanced");
 		const globalMaxSamples = ref(20000);
@@ -2257,6 +2353,9 @@ const selectedModality = ref<string>("tabular");
 		const defectSearch = ref("");
 		const defectTreeRef = ref<any>();
 		const defectTreeProps = { label: "label", children: "children", disabled: "disabled" } as const;
+
+		const defectsCatalogLoading = ref(false);
+		const defectsCatalogError = ref<string | null>(null);
 
 		const defectTreeData = ref<DefectTreeNode[]>([
 		  {
@@ -2324,16 +2423,15 @@ const selectedModality = ref<string>("tabular");
 		        label: "标注质量（Label）",
 		        desc: "错标、弱标注、标签噪声",
 		        children: [
-		          {
-		            key: "dirty_data.label_mismatch",
-		            label: "疑似错标（Label Mismatch）",
-		            desc: "识别“标签与特征不一致”的样本（如猫被标成狗）。",
-		            badge: { text: "即将上线", type: "warning" },
-		            status: "planned",
-		            disabled: true,
-		            module: "dirty_data",
-		            algorithms: labelMismatchAlgorithmOptions,
-		          },
+			          {
+			            key: "dirty_data.label_mismatch",
+			            label: "疑似错标（Label Mismatch）",
+			            desc: "识别“标签与特征不一致”的样本（如猫被标成狗）。",
+			            badge: { text: "可用", type: "success" },
+			            status: "ready",
+			            module: "dirty_data",
+			            algorithms: labelMismatchAlgorithmOptions,
+			          },
 		        ],
 		      },
 		    ],
@@ -2506,12 +2604,41 @@ const selectedModality = ref<string>("tabular");
 		      },
 		    ],
 		  },
-		]);
+			]);
 
-		function buildDefectIndex(nodes: DefectTreeNode[]) {
-		  const nodeByKey: Record<string, DefectTreeNode> = {};
-		  const pathByKey: Record<string, string[]> = {};
-		  const leafKeys: string[] = [];
+			async function loadDefectsCatalog() {
+			  defectsCatalogLoading.value = true;
+			  defectsCatalogError.value = null;
+			  try {
+			    const res = await DQScanAPI.getDefectsCatalog({ modality: "tabular" });
+			    const catalog = res?.data?.data;
+			    const tree = catalog?.tree;
+			    if (Array.isArray(tree) && tree.length) {
+			      defectTreeData.value = tree as any;
+			      await nextTick();
+			      const allowed = new Set(defectIndex.value.leafKeys);
+			      setCheckedDefects(checkedDefectKeys.value.filter((k) => allowed.has(k)));
+			      if (!defectIndex.value.nodeByKey[activeDefectKey.value]) {
+			        activeDefectKey.value = defectIndex.value.leafKeys[0] || "dirty_data.anomaly";
+			      }
+			      for (const mk of selectedModules.value) {
+			        if (mk !== "dirty_data" && mk !== "distribution" && mk !== "adversarial" && mk !== "physics") continue;
+			        autoBindModuleDefects(mk);
+			      }
+			      pushLog("缺陷树已从后端加载（/defects）");
+			    }
+			  } catch (e: any) {
+			    defectsCatalogError.value = e?.message ? String(e.message) : "加载缺陷树失败";
+			    pushLog(`加载缺陷树失败，将使用内置配置：${defectsCatalogError.value}`);
+			  } finally {
+			    defectsCatalogLoading.value = false;
+			  }
+			}
+
+			function buildDefectIndex(nodes: DefectTreeNode[]) {
+			  const nodeByKey: Record<string, DefectTreeNode> = {};
+			  const pathByKey: Record<string, string[]> = {};
+			  const leafKeys: string[] = [];
 
 		  const walk = (items: DefectTreeNode[], ancestors: string[]) => {
 		    for (const n of items) {
@@ -2628,18 +2755,18 @@ const selectedModality = ref<string>("tabular");
 
 			const moduleAlgorithmsSelected = ref<ModuleAlgoSelection>(createDefaultModuleAlgorithms());
 
-			function createDefaultDefectExecutors(): Record<string, string | null> {
-			  return {
-			    "dirty_data.anomaly": "ecod_3sigma",
-			    "dirty_data.missing": "ecod_3sigma",
-			    "dirty_data.duplicate": "ecod_3sigma",
-			    "dirty_data.range": "ecod_3sigma",
-			    "dirty_data.label_mismatch": null,
-			    "distribution.numeric_drift": "mmd_ks_chi2",
-			    "distribution.categorical_drift": "mmd_ks_chi2",
-			    "distribution.label_shift": "mmd_ks_chi2",
-			    "distribution.embedding_drift": null,
-			    "adversarial.blackbox": "zoo_or_random",
+				function createDefaultDefectExecutors(): Record<string, string | null> {
+				  return {
+				    "dirty_data.anomaly": "ecod_3sigma",
+				    "dirty_data.missing": "ecod_3sigma",
+				    "dirty_data.duplicate": "ecod_3sigma",
+				    "dirty_data.range": "ecod_3sigma",
+				    "dirty_data.label_mismatch": "confident_learning",
+				    "distribution.numeric_drift": "mmd_ks_chi2",
+				    "distribution.categorical_drift": "mmd_ks_chi2",
+				    "distribution.label_shift": "mmd_ks_chi2",
+				    "distribution.embedding_drift": null,
+				    "adversarial.blackbox": "zoo_or_random",
 			    "adversarial.whitebox": null,
 			    "adversarial.sensitivity": null,
 			    "physics.schema": "pandera_or_fallback",
@@ -2657,16 +2784,17 @@ const selectedModality = ref<string>("tabular");
 			  physics: ["physics.schema", "physics.conservation"],
 			};
 
-			const executorPreferenceByDefect: Record<string, string[]> = {
-			  "dirty_data.anomaly": ["ecod_3sigma"],
-			  "dirty_data.missing": ["missing_stats_threshold", "ecod_3sigma"],
-			  "dirty_data.duplicate": ["exact_duplicate", "ecod_3sigma"],
-			  "dirty_data.range": ["sigma_rule", "ecod_3sigma"],
-			  "distribution.numeric_drift": ["mmd_ks_chi2", "psi", "wasserstein"],
-			  "distribution.categorical_drift": ["mmd_ks_chi2", "psi"],
-			  "distribution.label_shift": ["mmd_ks_chi2", "psi"],
-			  "adversarial.blackbox": ["zoo_or_random"],
-			  "adversarial.whitebox": ["fgsm", "pgd", "cw"],
+				const executorPreferenceByDefect: Record<string, string[]> = {
+				  "dirty_data.anomaly": ["ecod_3sigma"],
+				  "dirty_data.missing": ["missing_stats_threshold", "ecod_3sigma"],
+				  "dirty_data.duplicate": ["exact_duplicate", "ecod_3sigma"],
+				  "dirty_data.range": ["sigma_rule", "ecod_3sigma"],
+				  "dirty_data.label_mismatch": ["confident_learning", "cv_consistency"],
+				  "distribution.numeric_drift": ["mmd_ks_chi2", "psi", "wasserstein"],
+				  "distribution.categorical_drift": ["mmd_ks_chi2", "psi"],
+				  "distribution.label_shift": ["mmd_ks_chi2", "psi"],
+				  "adversarial.blackbox": ["zoo_or_random"],
+				  "adversarial.whitebox": ["fgsm", "pgd", "cw"],
 			  "physics.schema": ["pandera_or_fallback"],
 			  "physics.conservation": ["cross_constraints"],
 			  "physics.temporal": ["temporal_rules"],
@@ -3037,13 +3165,18 @@ const selectedModality = ref<string>("tabular");
 				  return !baselineUploadedFile.value?.file_id;
 				});
 
-				const labelShiftMissingColumn = computed(() => {
-				  if (!checkedDefectKeys.value.includes("distribution.label_shift")) return false;
-				  const executor = defectExecutor.value["distribution.label_shift"];
-				  if (!executor) return false;
-				  if (executor !== "mmd_ks_chi2") return false;
-				  return !distributionLabelColumn.value;
-				});
+					const labelShiftMissingColumn = computed(() => {
+					  if (!checkedDefectKeys.value.includes("distribution.label_shift")) return false;
+					  const executor = defectExecutor.value["distribution.label_shift"];
+					  if (!executor) return false;
+					  if (executor !== "mmd_ks_chi2") return false;
+					  return !distributionLabelColumn.value;
+					});
+
+					const labelMismatchMissingColumn = computed(() => {
+					  if (!checkedDefectKeys.value.includes("dirty_data.label_mismatch")) return false;
+					  return !labelMismatchLabelColumn.value;
+					});
 
 				const configIssuesHint = computed(() => {
 				  const issues: string[] = [];
@@ -3058,12 +3191,15 @@ const selectedModality = ref<string>("tabular");
 				    issues.push(`有 ${labels.length} 个已启用缺陷未绑定执行算法：${short}`);
 				  }
 
-				  if (labelShiftMissingColumn.value) {
-				    issues.push("已启用“标签分布变化”，请在“算法参数”中选择标签列。");
-				  }
+					  if (labelShiftMissingColumn.value) {
+					    issues.push("已启用“标签分布变化”，请在“算法参数”中选择标签列。");
+					  }
+					  if (labelMismatchMissingColumn.value) {
+					    issues.push("已启用“疑似错标检测”，请在“算法参数”中选择标签列。");
+					  }
 
-				  return issues.join("；");
-				});
+					  return issues.join("；");
+					});
 
 				function defectBindRowClassName({ row }: { row: ModuleDefectRow }): string {
 				  if (!isDefectEnabled(row.key)) return "";
@@ -3317,14 +3453,19 @@ const selectedModality = ref<string>("tabular");
 				const duplicateKeyColumns = ref<string[]>([]);
 			const duplicateSimilarity = ref(0.92);
 			const rangeMethod = ref<"sigma" | "iqr" | "rules">("sigma");
-		const rangeSigma = ref(3);
-		const rangeIqrFactor = ref(1.5);
-		const rangeOnlyColumns = ref<string[]>([]);
-		const labelMismatchLabelColumn = ref<string>("");
-		const labelMismatchMaxSamples = ref(20000);
-		const labelMismatchConfidence = ref(0.8);
-		const labelMismatchFolds = ref(5);
-		const labelMismatchMaxExamples = ref(50);
+			const rangeSigma = ref(3);
+			const rangeIqrFactor = ref(1.5);
+			const rangeOnlyColumns = ref<string[]>([]);
+			const labelMismatchLabelColumn = ref<string>("");
+			const labelMismatchMaxSamples = ref(20000);
+			const labelMismatchExcludeColumns = ref<string[]>([]);
+			const labelMismatchNSplits = ref(5);
+			const labelMismatchThresholdProbTrue = ref(0.2);
+			const labelMismatchThresholdProbPred = ref(0.6);
+			const labelMismatchScoreMethod = ref<"self_confidence" | "normalized_margin" | "confidence_weighted_entropy">("self_confidence");
+			const labelMismatchFilterBy = ref<"both" | "prune_by_class" | "prune_by_noise_rate" | "confident_learning">("both");
+			const labelMismatchFractionNoise = ref(0.05);
+			const labelMismatchMaxExamples = ref(50);
 
 	// 对抗性模块参数（UI 侧）
 	const adversarialEpsilon = ref(0.05);
@@ -3504,14 +3645,19 @@ function clearPoll() {
 			  duplicateKeyColumns.value = [];
 			  duplicateSimilarity.value = 0.92;
 			  rangeMethod.value = "sigma";
-			  rangeSigma.value = 3;
-			  rangeIqrFactor.value = 1.5;
-			  rangeOnlyColumns.value = [];
-			  labelMismatchLabelColumn.value = "";
-			  labelMismatchMaxSamples.value = 20000;
-			  labelMismatchConfidence.value = 0.8;
-			  labelMismatchFolds.value = 5;
-			  labelMismatchMaxExamples.value = 50;
+				  rangeSigma.value = 3;
+				  rangeIqrFactor.value = 1.5;
+				  rangeOnlyColumns.value = [];
+				  labelMismatchLabelColumn.value = "";
+				  labelMismatchMaxSamples.value = 20000;
+				  labelMismatchExcludeColumns.value = [];
+				  labelMismatchNSplits.value = 5;
+				  labelMismatchThresholdProbTrue.value = 0.2;
+				  labelMismatchThresholdProbPred.value = 0.6;
+				  labelMismatchScoreMethod.value = "self_confidence";
+				  labelMismatchFilterBy.value = "both";
+				  labelMismatchFractionNoise.value = 0.05;
+				  labelMismatchMaxExamples.value = 50;
 			  adversarialEpsilon.value = 0.05;
 			  adversarialMaxIter.value = 20;
 			  adversarialRandomTrials.value = 40;
@@ -3641,15 +3787,16 @@ function stepClass(idx: number) {
 		    dirtyWhitelistColumns.value = dirtyWhitelistColumns.value.filter((c) => cols.includes(c));
 		    dirtyBlacklistColumns.value = dirtyBlacklistColumns.value.filter((c) => cols.includes(c));
 		    duplicateKeyColumns.value = duplicateKeyColumns.value.filter((c) => cols.includes(c));
-		    rangeOnlyColumns.value = rangeOnlyColumns.value.filter((c) => cols.includes(c));
-		    if (labelMismatchLabelColumn.value && !cols.includes(labelMismatchLabelColumn.value)) {
-		      labelMismatchLabelColumn.value = "";
-		    }
-		    physicsConstraints.value = physicsConstraints.value.map((x) => {
-		      if (!x.column) return x;
-		      if (cols.includes(x.column)) return x;
-		      return { ...x, column: "" };
-		    });
+			    rangeOnlyColumns.value = rangeOnlyColumns.value.filter((c) => cols.includes(c));
+			    if (labelMismatchLabelColumn.value && !cols.includes(labelMismatchLabelColumn.value)) {
+			      labelMismatchLabelColumn.value = "";
+			    }
+			    labelMismatchExcludeColumns.value = labelMismatchExcludeColumns.value.filter((c) => cols.includes(c));
+			    physicsConstraints.value = physicsConstraints.value.map((x) => {
+			      if (!x.column) return x;
+			      if (cols.includes(x.column)) return x;
+			      return { ...x, column: "" };
+			    });
 	  } catch (e: any) {
 	    columnOptions.value = [];
 	    columnsError.value = e?.message ? String(e.message) : "解析列名失败";
@@ -3887,21 +4034,26 @@ async function refreshTask() {
 		        max_examples: dirtyMaxExamples.value,
 		        whitelist_columns: dirtyWhitelistColumns.value,
 		        blacklist_columns: dirtyBlacklistColumns.value,
-		        range: {
-		          method: rangeMethod.value,
-		          sigma: rangeSigma.value,
-		          iqr_factor: rangeIqrFactor.value,
-		          only_columns: rangeOnlyColumns.value,
-		        },
-		        label_mismatch: {
-		          label_column: labelMismatchLabelColumn.value,
-		          max_samples: labelMismatchMaxSamples.value,
-		          confidence: labelMismatchConfidence.value,
-		          folds: labelMismatchFolds.value,
-		          max_examples: labelMismatchMaxExamples.value,
-		        },
-		      };
-		    }
+			        range: {
+			          method: rangeMethod.value,
+			          sigma: rangeSigma.value,
+			          iqr_factor: rangeIqrFactor.value,
+			          only_columns: rangeOnlyColumns.value,
+			        },
+			        label_mismatch: {
+			          label_column: labelMismatchLabelColumn.value,
+			          max_samples: labelMismatchMaxSamples.value,
+			          exclude_columns: labelMismatchExcludeColumns.value,
+			          n_splits: labelMismatchNSplits.value,
+			          threshold_prob_true: labelMismatchThresholdProbTrue.value,
+			          threshold_prob_pred: labelMismatchThresholdProbPred.value,
+			          score_method: labelMismatchScoreMethod.value,
+			          filter_by: labelMismatchFilterBy.value,
+			          fraction_noise: labelMismatchFractionNoise.value,
+			          max_examples: labelMismatchMaxExamples.value,
+			        },
+			      };
+			    }
 
 	    if (effectiveModules.includes("adversarial")) {
 	      params.adversarial = {
@@ -3969,15 +4121,20 @@ async function refreshTask() {
 		            only_columns: rangeOnlyColumns.value,
 		          };
 		        }
-		        if (defectKey === "dirty_data.label_mismatch") {
-		          return {
-		            label_column: labelMismatchLabelColumn.value,
-		            max_samples: labelMismatchMaxSamples.value,
-		            confidence: labelMismatchConfidence.value,
-		            folds: labelMismatchFolds.value,
-		            max_examples: labelMismatchMaxExamples.value,
-		          };
-		        }
+			        if (defectKey === "dirty_data.label_mismatch") {
+			          return {
+			            label_column: labelMismatchLabelColumn.value,
+			            max_samples: labelMismatchMaxSamples.value,
+			            exclude_columns: labelMismatchExcludeColumns.value,
+			            n_splits: labelMismatchNSplits.value,
+			            threshold_prob_true: labelMismatchThresholdProbTrue.value,
+			            threshold_prob_pred: labelMismatchThresholdProbPred.value,
+			            score_method: labelMismatchScoreMethod.value,
+			            filter_by: labelMismatchFilterBy.value,
+			            fraction_noise: labelMismatchFractionNoise.value,
+			            max_examples: labelMismatchMaxExamples.value,
+			          };
+			        }
 		        if (defectKey === "distribution.numeric_drift" || defectKey === "distribution.categorical_drift") {
 		          return {
 		            compare_mode: distributionCompareMode.value,
@@ -4206,26 +4363,27 @@ function moduleTitle(key: string) {
 	  } as any;
 	});
 
-	const dirtyRateChartOptions = computed(() => {
-	  const rs: Record<string, any> = activeReport.value?.results || {};
-	  const order = ["tabular", "timeseries", "image", "text"];
-	  const keys = [...order.filter((k) => k in rs), ...Object.keys(rs).filter((k) => !order.includes(k))];
-	  const labels = keys.map((k) => dataTypeLabel(k).replace("数据", ""));
-	  const anomaly = keys.map((k) => Number(rs[k]?.anomaly_rate ?? 0) * 100);
-	  const missing = keys.map((k) => Number(rs[k]?.missing_rate ?? 0) * 100);
-	  const duplicate = keys.map((k) => Number(rs[k]?.duplicate_rate ?? 0) * 100);
-	  return {
-	    title: { text: "问题率对比", left: "center", textStyle: { fontSize: 16, fontWeight: "bold" } },
-	    grid: { left: 70, right: 30, top: 60, bottom: 50 },
-	    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-	    legend: { top: 30, right: 10, data: ["异常率", "缺失率", "重复率"] },
-	    xAxis: { type: "category", data: labels },
-	    yAxis: { type: "value", name: "百分比 (%)", min: 0, max: 100 },
-	    series: [
-	      {
-	        name: "异常率",
-	        type: "bar",
-	        data: anomaly,
+		const dirtyRateChartOptions = computed(() => {
+		  const rs: Record<string, any> = activeReport.value?.results || {};
+		  const order = ["tabular", "timeseries", "image", "text"];
+		  const keys = [...order.filter((k) => k in rs), ...Object.keys(rs).filter((k) => !order.includes(k))];
+		  const labels = keys.map((k) => dataTypeLabel(k).replace("数据", ""));
+		  const anomaly = keys.map((k) => Number(rs[k]?.anomaly_rate ?? 0) * 100);
+		  const missing = keys.map((k) => Number(rs[k]?.missing_rate ?? 0) * 100);
+		  const duplicate = keys.map((k) => Number(rs[k]?.duplicate_rate ?? 0) * 100);
+		  const labelMismatch = keys.map((k) => Number(rs[k]?.label_mismatch_rate ?? 0) * 100);
+		  return {
+		    title: { text: "问题率对比", left: "center", textStyle: { fontSize: 16, fontWeight: "bold" } },
+		    grid: { left: 70, right: 30, top: 60, bottom: 50 },
+		    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+		    legend: { top: 30, right: 10, data: ["异常率", "缺失率", "重复率", "疑似错标率"] },
+		    xAxis: { type: "category", data: labels },
+		    yAxis: { type: "value", name: "百分比 (%)", min: 0, max: 100 },
+		    series: [
+		      {
+		        name: "异常率",
+		        type: "bar",
+		        data: anomaly,
 	        itemStyle: { color: "#DC3545" },
 	        markLine: {
 	          symbol: ["none", "none"],
@@ -4236,12 +4394,13 @@ function moduleTitle(key: string) {
 	            { yAxis: 10, lineStyle: { color: "#FFC107" } },
 	          ],
 	        },
-	      },
-	      { name: "缺失率", type: "bar", data: missing, itemStyle: { color: "#FFC107" } },
-	      { name: "重复率", type: "bar", data: duplicate, itemStyle: { color: "#17A2B8" } },
-	    ],
-	  } as any;
-	});
+		      },
+		      { name: "缺失率", type: "bar", data: missing, itemStyle: { color: "#FFC107" } },
+		      { name: "重复率", type: "bar", data: duplicate, itemStyle: { color: "#17A2B8" } },
+		      { name: "疑似错标率", type: "bar", data: labelMismatch, itemStyle: { color: "#6F42C1" } },
+		    ],
+		  } as any;
+		});
 
 	const reportOverviewRows = computed(() => {
 	  const payload = activeReport.value;
@@ -4265,14 +4424,15 @@ function moduleTitle(key: string) {
 	    if (moduleType === "distribution") {
 	      base.pValue = Number(dtScore?.p_value ?? dtResult.p_value ?? 1).toFixed(4);
 	      base.drift = dtResult.drift_detected ? "是" : "否";
-	    } else if (moduleType === "dirty_data") {
-	      base.anomalyRate = `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(1)}%`;
-	      base.missingRate = `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(1)}%`;
-	      base.duplicateRate = `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(1)}%`;
-	    } else if (moduleType === "adversarial") {
-	      base.attackSuccessRate = `${(Number(dtResult.attack_success_rate ?? 0) * 100).toFixed(1)}%`;
-	      base.robustnessScore = `${(Number(dtResult.robustness_score ?? 0) * 100).toFixed(1)}%`;
-	    } else if (moduleType === "physics") {
+		    } else if (moduleType === "dirty_data") {
+		      base.anomalyRate = `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(1)}%`;
+		      base.missingRate = `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(1)}%`;
+		      base.duplicateRate = `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(1)}%`;
+		      base.labelMismatchRate = `${(Number(dtResult.label_mismatch_rate ?? 0) * 100).toFixed(1)}%`;
+		    } else if (moduleType === "adversarial") {
+		      base.attackSuccessRate = `${(Number(dtResult.attack_success_rate ?? 0) * 100).toFixed(1)}%`;
+		      base.robustnessScore = `${(Number(dtResult.robustness_score ?? 0) * 100).toFixed(1)}%`;
+		    } else if (moduleType === "physics") {
 	      base.violationRate = `${(Number(dtResult.violation_rate ?? 0) * 100).toFixed(1)}%`;
 	      base.fidelityLevel = String(dtScore?.fidelity_level || "N/A");
 	    }
@@ -4309,18 +4469,19 @@ function moduleTitle(key: string) {
 	    const score = Number(dtScore?.score ?? 0);
 	    const extraMetrics: { label: string; value: string }[] = [];
 
-	    if (moduleType === "distribution") {
-	      extraMetrics.push({ label: "p值", value: String(Number(dtScore?.p_value ?? dtResult.p_value ?? 1).toFixed(6)) });
-	      extraMetrics.push({ label: "显著性", value: String(dtScore?.significance || "N/A") });
-	      extraMetrics.push({ label: "漂移检测", value: dtResult.drift_detected ? "是" : "否" });
-	    } else if (moduleType === "dirty_data") {
-	      extraMetrics.push({ label: "异常率", value: `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(2)}%` });
-	      extraMetrics.push({ label: "缺失率", value: `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(2)}%` });
-	      extraMetrics.push({ label: "重复率", value: `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(2)}%` });
-	    } else if (moduleType === "adversarial") {
-	      extraMetrics.push({ label: "攻击成功率", value: `${(Number(dtResult.attack_success_rate ?? 0) * 100).toFixed(2)}%` });
-	      extraMetrics.push({ label: "鲁棒性", value: `${(Number(dtResult.robustness_score ?? 0) * 100).toFixed(2)}%` });
-	      if (dtResult.total_issues != null && dtResult.total_samples != null) {
+		    if (moduleType === "distribution") {
+		      extraMetrics.push({ label: "p值", value: String(Number(dtScore?.p_value ?? dtResult.p_value ?? 1).toFixed(6)) });
+		      extraMetrics.push({ label: "显著性", value: String(dtScore?.significance || "N/A") });
+		      extraMetrics.push({ label: "漂移检测", value: dtResult.drift_detected ? "是" : "否" });
+		    } else if (moduleType === "dirty_data") {
+		      extraMetrics.push({ label: "异常率", value: `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(2)}%` });
+		      extraMetrics.push({ label: "缺失率", value: `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(2)}%` });
+		      extraMetrics.push({ label: "重复率", value: `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(2)}%` });
+		      extraMetrics.push({ label: "疑似错标率", value: `${(Number(dtResult.label_mismatch_rate ?? 0) * 100).toFixed(2)}%` });
+		    } else if (moduleType === "adversarial") {
+		      extraMetrics.push({ label: "攻击成功率", value: `${(Number(dtResult.attack_success_rate ?? 0) * 100).toFixed(2)}%` });
+		      extraMetrics.push({ label: "鲁棒性", value: `${(Number(dtResult.robustness_score ?? 0) * 100).toFixed(2)}%` });
+		      if (dtResult.total_issues != null && dtResult.total_samples != null) {
 	        extraMetrics.push({ label: "成功攻击数", value: `${dtResult.total_issues}/${dtResult.total_samples}` });
 	      }
 	    } else if (moduleType === "physics") {
@@ -4409,13 +4570,14 @@ function moduleTitle(key: string) {
 	      { c1: "> 15%", c2: "极低保真", c3: "40分" },
 	    ];
 	  }
-	  if (t === "dirty_data") {
-	    return [
-	      { metric: "异常率", t1: "<=5%: 0", t2: "5-10%: -20", t3: "10-20%: -40", t4: ">20%: -60" },
-	      { metric: "缺失率", t1: "<=1%: 0", t2: "1-5%: -10", t3: "5-15%: -25", t4: ">15%: -40" },
-	      { metric: "重复率", t1: "<=5%: 0", t2: "5-15%: -10", t3: "15-30%: -20", t4: ">30%: -30" },
-	    ];
-	  }
+		  if (t === "dirty_data") {
+		    return [
+		      { metric: "异常率", t1: "<=5%: 0", t2: "5-10%: -20", t3: "10-20%: -40", t4: ">20%: -60" },
+		      { metric: "缺失率", t1: "<=1%: 0", t2: "1-5%: -10", t3: "5-15%: -25", t4: ">15%: -40" },
+		      { metric: "重复率", t1: "<=5%: 0", t2: "5-15%: -10", t3: "15-30%: -20", t4: ">30%: -30" },
+		      { metric: "疑似错标率", t1: "<=2%: 0", t2: "2-5%: -20", t3: "5-10%: -40", t4: ">10%: -70" },
+		    ];
+		  }
 	  return [];
 	});
 
@@ -4427,8 +4589,9 @@ function moduleTitle(key: string) {
 	  { grade: "D", range: "0-59", desc: "不及格" },
 	]);
 
-onMounted(() => {
-  loadAlgorithms();
+onMounted(async () => {
+  await loadAlgorithms();
+  await loadDefectsCatalog();
 });
 
 onBeforeUnmount(() => {

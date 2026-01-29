@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..common.base_scanner import BaseScanner
+from ...common.base_scanner import BaseScanner
 
 try:
     import numpy as np  # type: ignore
@@ -137,21 +137,22 @@ class TabularDirtyScanner(BaseScanner):
         duplicate_flag = bool(duplicate_results.get("has_issues", results["duplicate_rate"] > 0))
         if dup_thresh is not None:
             duplicate_flag = results["duplicate_rate"] >= dup_thresh
-        results["duplicate_threshold"] = dup_thresh
-        results["has_issues"] = bool(
-            (results["anomaly_rate"] > 0 if check_anomaly else False)
-            or (missing_flag if check_missing else False)
-            or (duplicate_flag if check_duplicate else False)
-            or (range_results.get("total_violations", 0) > 0 if check_range else False)
+
+        has_issues = bool(
+            results["anomaly_rate"] > 0
+            or missing_flag
+            or duplicate_flag
+            or int(range_results.get("total_violations", 0) or 0) > 0
         )
+        results["has_issues"] = has_issues
 
         detailed_issues: list[dict[str, Any]] = []
-        total_issues = 0
         remaining_examples = max_examples
+        total_issues = 0
 
-        if check_anomaly:
+        if check_anomaly and remaining_examples > 0:
             anomaly_indices = anomaly_results.get("anomaly_indices") or []
-            total_issues += len(anomaly_indices)
+            total_issues += int(anomaly_results.get("anomaly_count", len(anomaly_indices)) or 0)
             take = min(len(anomaly_indices), remaining_examples)
             for idx in anomaly_indices[:take]:
                 detailed_issues.append(
@@ -165,7 +166,9 @@ class TabularDirtyScanner(BaseScanner):
             remaining_examples -= take
 
         if check_missing and remaining_examples > 0:
-            missing_by_column = (missing_results.get("missing_by_column") or {}) if isinstance(missing_results, dict) else {}
+            missing_by_column = (
+                (missing_results.get("missing_by_column") or {}) if isinstance(missing_results, dict) else {}
+            )
             for col_name, col_info in list(missing_by_column.items())[:remaining_examples]:
                 count = int(col_info.get("count", 0) or 0)
                 rate = float(col_info.get("rate", 0.0) or 0.0)
@@ -179,15 +182,17 @@ class TabularDirtyScanner(BaseScanner):
                     }
                 )
                 remaining_examples -= 1
+                if remaining_examples <= 0:
+                    break
 
         if check_duplicate and remaining_examples > 0:
             dup_indices = duplicate_results.get("duplicate_indices") or []
             total_issues += len(dup_indices)
             for idx in dup_indices[:remaining_examples]:
-                detailed_issues.append(
-                    {"data_id": f"row_{idx}", "issue_type": "重复数据", "severity": "light", "details": {}}
-                )
+                detailed_issues.append({"data_id": f"row_{idx}", "issue_type": "重复数据", "severity": "light", "details": {}})
                 remaining_examples -= 1
+                if remaining_examples <= 0:
+                    break
 
         results["total_issues"] = int(total_issues)
         results["issue_percentage"] = float(total_issues / len(data)) if len(data) > 0 else 0.0
@@ -262,9 +267,7 @@ class TabularDirtyScanner(BaseScanner):
             "has_issues": bool(over_threshold) if threshold is not None else total_missing > 0,
         }
 
-    def _detect_duplicates(
-        self, data: "pd.DataFrame", *, key_columns: Optional[list[str]] = None
-    ) -> dict[str, Any]:
+    def _detect_duplicates(self, data: "pd.DataFrame", *, key_columns: Optional[list[str]] = None) -> dict[str, Any]:
         subset = None
         if key_columns:
             available = [c for c in key_columns if c in data.columns]
@@ -331,3 +334,4 @@ class TabularDirtyScanner(BaseScanner):
             "sigma": float(sigma),
             "iqr_factor": float(iqr_factor),
         }
+

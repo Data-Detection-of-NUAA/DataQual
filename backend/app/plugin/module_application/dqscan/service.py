@@ -11,7 +11,7 @@ dqscan 后端适配层：任务管理 + 运行引擎 + WebSocket 推送
 - 事件推送：算法通过 `emit({...})` 上报 log/progress/done/error，本服务广播到 WebSocket 客户端
 
 注意：
-- 任务状态当前只保存在内存（`DQScanService._tasks`），服务重启后状态会丢失；
+- 任务运行态（ws_clients/queue）仍在内存；任务元数据会落库（服务重启后可查询已结束任务的状态与结果索引）；
 - 结果文件落盘在 static 目录，因此前端可通过 “result/artifact” 接口拉取。
 """
 
@@ -25,13 +25,18 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import UploadFile, WebSocket
+from sqlalchemy import select, update
 
 from app.core.logger import log
 from app.config.path_conf import BASE_DIR, STATIC_DIR
+from app.core.database import async_db_session
+
+from .model import DQScanTaskModel
 
 
 def _find_repo_root() -> Path:
@@ -209,10 +214,16 @@ _DIRTY_RANGE_ALGOS = _BASE_DIRTY_ALGOS + [
 
 _LABEL_MISMATCH_ALGOS = [
     {
+        "key": "confident_learning",
+        "label": "Confident Learning（错标候选集）",
+        "desc": "基于 out-of-fold 概率的 label quality score + 按类剪枝，输出疑似错标候选集与混淆方向。",
+        "status": "ready",
+    },
+    {
         "key": "cv_consistency",
         "label": "交叉验证一致性",
         "desc": "通过交叉验证训练并找出“模型强烈不认可的标签”样本。",
-        "status": "planned",
+        "status": "ready",
     },
     {
         "key": "embedding_knn",
@@ -301,9 +312,8 @@ _DEFECT_CATALOG = {
                             "key": "dirty_data.label_mismatch",
                             "label": "疑似错标（Label Mismatch）",
                             "desc": "识别“标签与特征不一致”的样本（如猫被标成狗）。",
-                            "badge": {"text": "即将上线", "type": "warning"},
-                            "status": "planned",
-                            "disabled": True,
+                            "badge": {"text": "可用", "type": "success"},
+                            "status": "ready",
                             "module": "dirty_data",
                             "algorithms": _LABEL_MISMATCH_ALGOS,
                         }
@@ -511,6 +521,60 @@ class DQScanService:
     _lock = asyncio.Lock()
 
     @classmethod
+    async def _db_create_task(
+        cls,
+        *,
+        task_id: str,
+        file_id: str,
+        baseline_file_id: str | None,
+        algorithm: str,
+        params: dict[str, Any] | None,
+    ) -> None:
+        """创建任务元数据（DB 持久化，失败则降级为仅内存态/落盘）。"""
+        try:
+            async with async_db_session() as session:
+                async with session.begin():
+                    obj = DQScanTaskModel(
+                        task_id=task_id,
+                        task_status="PENDING",
+                        progress=0,
+                        algorithm=algorithm,
+                        file_id=file_id,
+                        baseline_file_id=baseline_file_id,
+                        params_json=json.dumps(params or {}, ensure_ascii=False),
+                        result_file_id=None,
+                        error=None,
+                        started_time=None,
+                        ended_time=None,
+                    )
+                    session.add(obj)
+        except Exception as e:
+            log.warning(f"⚠️ dqscan 任务入库失败（将仅保留落盘文件与内存态）: {e}")
+
+    @classmethod
+    async def _db_get_task(cls, task_id: str) -> DQScanTaskModel | None:
+        """按 task_id 查询任务记录（DB）。"""
+        try:
+            async with async_db_session() as session:
+                result = await session.execute(select(DQScanTaskModel).where(DQScanTaskModel.task_id == task_id))
+                return result.scalars().first()
+        except Exception as e:
+            log.warning(f"⚠️ dqscan 查询任务失败: {e}")
+            return None
+
+    @classmethod
+    async def _db_update_task(cls, task_id: str, values: dict[str, Any]) -> None:
+        """按 task_id 更新任务记录（DB）。"""
+        if not values:
+            return
+        try:
+            async with async_db_session() as session:
+                async with session.begin():
+                    await session.execute(update(DQScanTaskModel).where(DQScanTaskModel.task_id == task_id).values(**values))
+        except Exception as e:
+            log.warning(f"⚠️ dqscan 更新任务失败: {e}")
+
+    @classmethod
     async def list_algorithms(cls) -> list[dict[str, Any]]:
         """返回算法引擎中已注册的算法列表（供前端下拉选择）。"""
         _ensure_dqscan_importable()
@@ -591,6 +655,14 @@ class DQScanService:
         async with cls._lock:
             cls._tasks[task_id] = state
 
+        await cls._db_create_task(
+            task_id=task_id,
+            file_id=file_id,
+            baseline_file_id=baseline_file_id,
+            algorithm=algorithm,
+            params=params,
+        )
+
         asyncio.create_task(
             cls._run_task(
                 state=state,
@@ -639,23 +711,47 @@ class DQScanService:
                 if not label_column:
                     raise ValueError("已启用标签分布变化，但未提供 label_column")
 
+        label_mismatch = defects_selected.get("dirty_data.label_mismatch") if isinstance(defects_selected, dict) else None
+        if isinstance(label_mismatch, dict) and label_mismatch.get("enabled") is not False:
+            # label_mismatch 有默认 executor（引擎侧会回退到 confident_learning），因此只要启用就必须提供 label_column
+            dirty_cfg = params.get("dirty_data") if isinstance(params.get("dirty_data"), dict) else {}
+            params_block = label_mismatch.get("params") if isinstance(label_mismatch.get("params"), dict) else {}
+            label_column = params_block.get("label_column") or params.get("label_column") or dirty_cfg.get("label_column")
+            if not label_column:
+                raise ValueError("已启用疑似错标检测，但未提供 label_column")
+
     @classmethod
     async def get_task(cls, task_id: str) -> dict[str, Any]:
-        """查询任务状态（仅内存态，不保证服务重启后可查）。"""
+        """查询任务状态（优先内存态；服务重启后可降级从 DB 查询）。"""
         async with cls._lock:
             state = cls._tasks.get(task_id)
-        if not state:
+        if state:
+            return {
+                "task_id": state.task_id,
+                "status": state.status,
+                "progress": state.progress,
+                "started_at": state.started_at,
+                "ended_at": state.ended_at,
+                "error": state.error,
+                "baseline_file_id": state.baseline_file_id,
+                "result_file_id": state.result_file_id,
+            }
+
+        obj = await cls._db_get_task(task_id)
+        if not obj:
             raise KeyError("task not found")
 
+        started_at = obj.started_time.timestamp() if obj.started_time else None
+        ended_at = obj.ended_time.timestamp() if obj.ended_time else None
         return {
-            "task_id": state.task_id,
-            "status": state.status,
-            "progress": state.progress,
-            "started_at": state.started_at,
-            "ended_at": state.ended_at,
-            "error": state.error,
-            "baseline_file_id": state.baseline_file_id,
-            "result_file_id": state.result_file_id,
+            "task_id": obj.task_id,
+            "status": obj.task_status,
+            "progress": int(obj.progress or 0),
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "error": obj.error,
+            "baseline_file_id": obj.baseline_file_id,
+            "result_file_id": obj.result_file_id,
         }
 
     @classmethod
@@ -663,9 +759,13 @@ class DQScanService:
         """获取 result.json 的绝对路径（任务成功后才存在）。"""
         async with cls._lock:
             state = cls._tasks.get(task_id)
-        if not state or not state.result_file_id:
+        if state and state.result_file_id:
+            return _resolve_file_id(state.result_file_id)
+
+        obj = await cls._db_get_task(task_id)
+        if not obj or not obj.result_file_id:
             raise KeyError("result not ready")
-        return _resolve_file_id(state.result_file_id)
+        return _resolve_file_id(obj.result_file_id)
 
     @classmethod
     async def get_task_dir(cls, task_id: str) -> Path:
@@ -857,6 +957,16 @@ class DQScanService:
         state.status = "RUNNING"
         state.started_at = time.time()
         state.progress = 0
+        await cls._db_update_task(
+            state.task_id,
+            {
+                "task_status": "RUNNING",
+                "progress": 0,
+                "started_time": datetime.now(),
+                "ended_time": None,
+                "error": None,
+            },
+        )
         loop = asyncio.get_running_loop()
 
         task_dir = (_tasks_root() / state.task_id).resolve()
@@ -872,6 +982,12 @@ class DQScanService:
             if event.get("type") == "progress":
                 try:
                     state.progress = int(event.get("value", state.progress))
+                except Exception:
+                    pass
+                try:
+                    loop.call_soon_threadsafe(
+                        asyncio.create_task, cls._db_update_task(state.task_id, {"progress": int(state.progress)})
+                    )
                 except Exception:
                     pass
             if event.get("type") == "log":
@@ -917,10 +1033,29 @@ class DQScanService:
             state.status = "SUCCESS"
             state.progress = 100
             state.ended_at = time.time()
+            await cls._db_update_task(
+                state.task_id,
+                {
+                    "task_status": "SUCCESS",
+                    "progress": 100,
+                    "ended_time": datetime.now(),
+                    "result_file_id": state.result_file_id,
+                    "error": None,
+                },
+            )
             cls._broadcast_nowait(state, {"type": "done", "task_id": state.task_id, "message": "扫描完成"})
         except Exception as e:
             state.status = "FAILED"
             state.error = str(e)
             state.ended_at = time.time()
+            await cls._db_update_task(
+                state.task_id,
+                {
+                    "task_status": "FAILED",
+                    "ended_time": datetime.now(),
+                    "error": state.error,
+                    "progress": int(state.progress or 0),
+                },
+            )
             log.exception("dqscan task failed")
             cls._broadcast_nowait(state, {"type": "error", "task_id": state.task_id, "message": str(e)})

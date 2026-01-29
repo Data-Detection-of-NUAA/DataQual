@@ -167,6 +167,7 @@ class TabularQualityEngine:
         from dqscan.scanner import (
             TabularAdversarialScanner,
             TabularDirtyScanner,
+            TabularLabelMismatchScanner,
             TabularDistributionScanner,
             TabularPhysicsScanner,
         )
@@ -231,6 +232,81 @@ class TabularQualityEngine:
                     res.setdefault("contamination", contamination)
                     res.setdefault("whitelist_columns", whitelist_columns)
                     res.setdefault("blacklist_columns", blacklist_columns)
+
+                    # 疑似错标（Label Mismatch）：仅在 defects.selected 启用时执行，避免无谓开销
+                    lm_entry = _defect_entry("dirty_data.label_mismatch")
+                    lm_status = str(lm_entry.get("status", "ready")) if lm_entry else "disabled"
+                    lm_enabled = bool(lm_entry) and (lm_entry.get("enabled") is not False) and lm_status == "ready"
+                    lm_executor = (lm_entry.get("executor_algorithm") or lm_entry.get("executor_runtime")) if lm_entry else None
+                    lm_params = lm_entry.get("params") if isinstance(lm_entry.get("params"), dict) else {}
+                    lm_cfg = dirty_cfg.get("label_mismatch") if isinstance(dirty_cfg.get("label_mismatch"), dict) else {}
+                    # 兼容：允许通过 dirty_data.label_mismatch.enabled 强制运行（不依赖 defects 结构）
+                    if not lm_enabled and lm_cfg.get("enabled") is True:
+                        lm_enabled = True
+                        lm_executor = str(lm_cfg.get("executor") or lm_executor or "confident_learning")
+                        lm_params = lm_cfg.get("params") if isinstance(lm_cfg.get("params"), dict) else lm_params
+
+                    lm_executor_norm = str(lm_executor or "").strip() if lm_executor is not None else ""
+                    if not lm_executor_norm:
+                        lm_executor_norm = "confident_learning"
+
+                    if lm_enabled and (lm_executor_norm in {"cv_consistency", "confident_learning", "confident_pruning_lite", "cl"}):
+                        label_column = (
+                            lm_params.get("label_column")
+                            or lm_cfg.get("label_column")
+                            or params.get("label_column")
+                            or dirty_cfg.get("label_column")
+                        )
+                        exclude_cols_raw = lm_params.get("exclude_columns") or lm_cfg.get("exclude_columns") or params.get("exclude_columns")
+                        exclude_cols: list[str] = []
+                        if isinstance(exclude_cols_raw, list):
+                            exclude_cols = [str(x).strip() for x in exclude_cols_raw if isinstance(x, str) and x.strip()]
+                        elif isinstance(exclude_cols_raw, str) and exclude_cols_raw.strip():
+                            exclude_cols = [exclude_cols_raw.strip()]
+
+                        lm_max_examples = lm_params.get("max_examples") or lm_cfg.get("max_examples") or dirty_cfg.get(
+                            "max_examples", report_cfg.get("max_examples", 50)
+                        )
+                        try:
+                            lm_scanner = TabularLabelMismatchScanner(
+                                executor_algorithm=str(lm_executor_norm),
+                                n_splits=int(lm_params.get("n_splits", 5)),
+                                threshold_prob_true=float(lm_params.get("threshold_prob_true", 0.2)),
+                                threshold_prob_pred=float(lm_params.get("threshold_prob_pred", 0.6)),
+                                score_method=str(lm_params.get("score_method", "self_confidence")),
+                                filter_by=str(lm_params.get("filter_by", "both")),
+                                fraction_noise=float(lm_params.get("fraction_noise", 0.05)),
+                                max_samples=int(lm_params.get("max_samples", 5000)),
+                                max_categorical_cardinality=int(lm_params.get("max_categorical_cardinality", 50)),
+                                model=str(lm_params.get("model", "logreg")),
+                                seed=int(lm_params.get("seed", 42)),
+                            )
+                            lm_res = lm_scanner.scan(
+                                df,
+                                label_column=str(label_column) if label_column is not None else "",
+                                exclude_columns=exclude_cols,
+                                max_examples=int(lm_max_examples),
+                            )
+                        except Exception as e:
+                            lm_res = {"error": f"label_mismatch 执行失败: {e}", "has_issues": False, "total_issues": 0, "issue_percentage": 0.0}
+
+                        res["label_mismatch"] = lm_res
+                        if isinstance(lm_res, dict) and not lm_res.get("error"):
+                            res["label_mismatch_rate"] = float(lm_res.get("label_mismatch_rate", 0.0) or 0.0)
+                            res["label_mismatch_count"] = int(lm_res.get("label_mismatch_count", 0) or 0)
+                            # 合并 issues：让报告视图能看到“疑似错标”条目
+                            base_issues = res.get("detailed_issues") if isinstance(res.get("detailed_issues"), list) else []
+                            lm_issues = lm_res.get("detailed_issues") if isinstance(lm_res.get("detailed_issues"), list) else []
+                            if lm_issues:
+                                merged = list(base_issues) + list(lm_issues)
+                                res["detailed_issues"] = merged[: int(lm_max_examples)]
+                            try:
+                                res["total_issues"] = int(res.get("total_issues", 0) or 0) + int(lm_res.get("total_issues", 0) or 0)
+                            except Exception:
+                                pass
+                            checks = res.get("enabled_checks")
+                            if isinstance(checks, list) and "label_mismatch" not in checks:
+                                checks.append("label_mismatch")
 
             elif module == "distribution":
                 # 分布漂移（两种模式）：
@@ -409,6 +485,22 @@ class TabularQualityEngine:
                         if isinstance(v, dict):
                             constraints[str(k)] = {**v}
 
+                # 支持结构化规则（DSL）：优先从 defects.selected 的 params 取（便于缺陷级参数），其次取 physics.rules
+                rules: list[dict[str, Any]] = []
+                for defect_key in ("physics.schema", "physics.conservation"):
+                    entry = _defect_entry(defect_key)
+                    p = entry.get("params") if isinstance(entry.get("params"), dict) else {}
+                    rr = p.get("rules")
+                    if isinstance(rr, list):
+                        for x in rr:
+                            if isinstance(x, dict):
+                                rules.append({**x})
+                rr2 = phy_cfg.get("rules")
+                if isinstance(rr2, list):
+                    for x in rr2:
+                        if isinstance(x, dict):
+                            rules.append({**x})
+
                 if bool(phy_cfg.get("auto_constraints", True)):
                     for col in df.select_dtypes(include=[np.number]).columns:
                         col_lower = str(col).lower()
@@ -425,12 +517,14 @@ class TabularQualityEngine:
 
                 scanner = TabularPhysicsScanner(
                     constraints=constraints,
+                    rules=rules,
                     check_conservation=bool(phy_cfg.get("check_conservation", False)),
                 )
                 res = scanner.scan(df)
                 if isinstance(res, dict):
                     res.setdefault("auto_constraints", bool(phy_cfg.get("auto_constraints", True)))
                     res.setdefault("check_conservation", bool(phy_cfg.get("check_conservation", False)))
+                    res.setdefault("rules_total", len(rules))
 
             else:
                 res = {"error": f"未知模块: {module}"}
@@ -534,6 +628,25 @@ class TabularQualityEngine:
                                 "details": {"count": info.get("count", 0), "bounds": info.get("bounds")},
                             }
                         )
+                elif defect_key == "dirty_data.label_mismatch":
+                    lm = module_res.get("label_mismatch") if isinstance(module_res.get("label_mismatch"), dict) else {}
+                    if not lm:
+                        base.update({"status": "FAILED", "error": "label_mismatch_not_run"})
+                        defect_results[defect_key] = base
+                        continue
+                    if lm.get("error"):
+                        base.update({"status": "FAILED", "error": lm.get("error")})
+                        defect_results[defect_key] = base
+                        continue
+                    metrics = {
+                        "label_mismatch_count": lm.get("label_mismatch_count", 0),
+                        "label_mismatch_rate": lm.get("label_mismatch_rate", 0.0),
+                        "used_samples": lm.get("used_samples", 0),
+                        "n_classes": lm.get("n_classes", 0),
+                        "threshold_prob_true": lm.get("threshold_prob_true", 0.2),
+                        "threshold_prob_pred": lm.get("threshold_prob_pred", 0.6),
+                    }
+                    issues = lm.get("detailed_issues") if isinstance(lm.get("detailed_issues"), list) else []
                 elif defect_key == "distribution.numeric_drift":
                     ks = module_res.get("ks_results") if isinstance(module_res.get("ks_results"), dict) else {}
                     feature_results = ks.get("feature_results") if isinstance(ks.get("feature_results"), dict) else {}
