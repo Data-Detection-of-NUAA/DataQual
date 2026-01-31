@@ -123,7 +123,7 @@ def handle_exception(app: FastAPI):
             else:
                 msg = msg.replace("Value error", "").strip()
         log.error(f"[参数验证异常] {request.method} {request.url.path} | 错误信息: {msg} | 原始错误: {exc.errors()}")
-        return ErrorResponse(msg=str(msg), status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, data=exc.body)
+        return ErrorResponse(msg=str(msg), status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, data=exc.errors())
 
     @app.exception_handler(ResponseValidationError)
     async def ResponseValidationHandle(request: Request, exc: ResponseValidationError) -> JSONResponse:

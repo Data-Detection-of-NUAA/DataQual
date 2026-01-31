@@ -173,6 +173,7 @@ declare global {
   export interface BatchType {
     ids?: number[];
     status?: string;
+    is_active?: number;
   }
 }
 export {};

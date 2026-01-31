@@ -2,9 +2,10 @@
 审计规则Schema
 """
 from pydantic import Field
-from typing import Optional
+from typing import Optional, List
+from fastapi import Query
 
-from app.core.base_schema import BaseSchema, QueryBaseParam
+from app.core.base_schema import BaseSchema
 
 
 class AuditRuleBase(BaseSchema):
@@ -36,9 +37,27 @@ class AuditRuleUpdate(BaseSchema):
     remark: Optional[str] = Field(None, description='备注')
 
 
-class AuditRuleQueryParam(QueryBaseParam):
+class AuditRuleQueryParam:
     """规则查询参数"""
-    rule_code: Optional[str] = Field(None, description='规则编码')
-    rule_name: Optional[str] = Field(None, description='规则名称')
-    rule_type: Optional[str] = Field(None, description='规则类型')
-    is_active: Optional[int] = Field(None, description='是否启用')
+    def __init__(
+        self,
+        rule_code: Optional[str] = Query(None, description='规则编码'),
+        rule_name: Optional[str] = Query(None, description='规则名称'),
+        rule_type: Optional[str] = Query(None, description='规则类型'),
+        is_active: Optional[int] = Query(None, description='是否启用')
+    ):
+        self.rule_code = ("like", rule_code) if rule_code else None
+        self.rule_name = ("like", rule_name) if rule_name else None
+        self.rule_type = ("eq", rule_type) if rule_type else None
+        self.is_active = ("eq", is_active) if is_active is not None else None
+
+
+class AuditRuleBatchDelete(BaseSchema):
+    """批量删除规则"""
+    ids: List[int] = Field(..., description='规则ID列表')
+
+
+class AuditRuleBatchStatus(BaseSchema):
+    """批量更新规则状态"""
+    ids: List[int] = Field(..., description='规则ID列表')
+    is_active: int = Field(..., ge=0, le=1, description='是否启用 1-启用 0-禁用')

@@ -42,14 +42,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         log.info(f"✅ {settings.DATABASE_TYPE}数据库初始化完成")
         await import_modules_async(modules=settings.EVENT_LIST, desc="全局事件", app=app, status=True)
         log.info("✅ 全局事件模块加载完成")
-        await ParamsService().init_config_service(redis=app.state.redis)
-        log.info("✅ Redis系统配置初始化完成")
-        await DictDataService().init_dict_service(redis=app.state.redis)
-        log.info("✅ Redis数据字典初始化完成")
-        await SchedulerUtil.init_system_scheduler(redis=app.state.redis)
-        log.info(f"✅ 定时任务调度器初始化完成")
-        await FastAPILimiter.init(redis=app.state.redis, prefix=settings.REQUEST_LIMITER_REDIS_PREFIX, http_callback=http_limit_callback, ws_callback=ws_limit_callback)
-        log.info("✅ 请求限流器初始化完成")
+
+        # 只有Redis启用时才初始化相关服务
+        if settings.REDIS_ENABLE and hasattr(app.state, 'redis'):
+            await ParamsService().init_config_service(redis=app.state.redis)
+            log.info("✅ Redis系统配置初始化完成")
+            await DictDataService().init_dict_service(redis=app.state.redis)
+            log.info("✅ Redis数据字典初始化完成")
+            await SchedulerUtil.init_system_scheduler(redis=app.state.redis)
+            log.info(f"✅ 定时任务调度器初始化完成")
+            await FastAPILimiter.init(redis=app.state.redis, prefix=settings.REQUEST_LIMITER_REDIS_PREFIX, http_callback=http_limit_callback, ws_callback=ws_limit_callback)
+            log.info("✅ 请求限流器初始化完成")
+        else:
+            log.warning("⚠️  Redis未启用，跳过Redis相关服务初始化")
         
         # 导入并显示最终的启动信息面板
         from app.common.enums import EnvironmentEnum
@@ -73,10 +78,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     try:
         await import_modules_async(modules=settings.EVENT_LIST, desc="全局事件", app=app, status=False)
         log.info("✅ 全局事件模块卸载完成")
-        await SchedulerUtil.close_system_scheduler()
-        log.info("✅ 定时任务调度器已关闭")
-        await FastAPILimiter.close()
-        log.info("✅ 请求限制器已关闭")
+
+        if settings.REDIS_ENABLE:
+            await SchedulerUtil.close_system_scheduler()
+            log.info("✅ 定时任务调度器已关闭")
+            await FastAPILimiter.close()
+            log.info("✅ 请求限制器已关闭")
+
         console_close()
 
     except Exception as e:
@@ -123,21 +131,37 @@ def register_routers(app: FastAPI) -> None:
     from app.api.v1.module_common import common_router
     from app.api.v1.module_system import system_router
     from app.api.v1.module_monitor import monitor_router
-    
-    app.include_router(common_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
-    app.include_router(system_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
-    app.include_router(monitor_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
-    
+
+    # 根据 Redis 是否启用决定是否使用速率限制器
+    if settings.REDIS_ENABLE:
+        app.include_router(common_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+        app.include_router(system_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+        app.include_router(monitor_router, dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+    else:
+        app.include_router(common_router)
+        app.include_router(system_router)
+        app.include_router(monitor_router)
+
     from app.plugin.module_application.ai.ws import WS_AI
-    # 手动注册WebSocket路由，不使用速率限制器
-    app.include_router(router=WS_AI, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
+    # 手动注册WebSocket路由
+    if settings.REDIS_ENABLE:
+        app.include_router(router=WS_AI, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
+    else:
+        app.include_router(router=WS_AI)
 
     from app.plugin.module_application.dqscan.ws import WS_DQSCAN
-    app.include_router(router=WS_DQSCAN, dependencies=[Depends(WebSocketRateLimiter(times=10, seconds=5))])
-    # 先将动态路由注册到应用，使用速率限制器
+    if settings.REDIS_ENABLE:
+        app.include_router(router=WS_DQSCAN, dependencies=[Depends(WebSocketRateLimiter(times=10, seconds=5))])
+    else:
+        app.include_router(router=WS_DQSCAN)
+
+    # 先将动态路由注册到应用
     from app.core.discover import get_dynamic_router
     # 获取动态路由实例
-    app.include_router(router=get_dynamic_router(), dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+    if settings.REDIS_ENABLE:
+        app.include_router(router=get_dynamic_router(), dependencies=[Depends(RateLimiter(times=5, seconds=10))])
+    else:
+        app.include_router(router=get_dynamic_router())
 
     @app.get("/health", include_in_schema=False)
     async def root_health():

@@ -7,7 +7,7 @@
     <div class="layout__sidebar">
       <div class="layout-sidebar">
         <!-- 侧栏标题 -->
-        <AppLogo />
+        <AppLogo v-if="isShowLogo" :collapse="!isSidebarOpen" />
         <!-- 主菜单内容 -->
         <el-scrollbar>
           <BasicMenu :data="routes" base-path="" />
@@ -113,7 +113,7 @@ import {
 // 布局相关参数
 const { t } = useI18n();
 const router = useRouter();
-const { isShowTagsView } = useLayout();
+const { isShowTagsView, isSidebarOpen, isShowLogo } = useLayout();
 const userStore = useUserStore();
 const lockStore = useLockStore();
 const settingStore = useSettingsStore();

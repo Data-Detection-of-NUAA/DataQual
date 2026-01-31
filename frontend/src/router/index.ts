@@ -94,6 +94,19 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    path: "/module_audit/task",
+    component: Layout,
+    meta: { hidden: true },
+    children: [
+      {
+        path: "workflow",
+        name: "AuditTaskWorkflow",
+        meta: { hidden: true, title: "合规审计流程" },
+        component: () => import("@/views/module_audit/task/workflow.vue"),
+      },
+    ],
+  },
 ];
 
 /**

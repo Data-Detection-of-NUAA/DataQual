@@ -119,21 +119,21 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
             ip_white_list = []
             white_api_list_path = []
             ip_black_list = []
-            
+
             try:
-                # 从应用实例获取Redis连接
-                redis = request.app.state.redis
-                if not redis:
-                    raise Exception("无法获取Redis连接")
-                
-                # 使用ParamsService获取系统配置
-                system_config = await ParamsService.get_system_config_for_middleware(redis)
-                # 提取配置值
-                demo_enable = system_config["demo_enable"]
-                ip_white_list = system_config["ip_white_list"]
-                white_api_list_path = system_config["white_api_list_path"]
-                ip_black_list = system_config["ip_black_list"]
-                
+                # 从应用实例获取Redis连接(仅在Redis启用时)
+                from app.config.setting import settings
+                if settings.REDIS_ENABLE and hasattr(request.app.state, 'redis'):
+                    redis = request.app.state.redis
+                    if redis:
+                        # 使用ParamsService获取系统配置
+                        system_config = await ParamsService.get_system_config_for_middleware(redis)
+                        # 提取配置值
+                        demo_enable = system_config["demo_enable"]
+                        ip_white_list = system_config["ip_white_list"]
+                        white_api_list_path = system_config["white_api_list_path"]
+                        ip_black_list = system_config["ip_black_list"]
+
             except Exception as e:
                 log.error(f"获取系统配置失败: {e}")
             

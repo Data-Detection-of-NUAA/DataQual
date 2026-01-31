@@ -32,14 +32,17 @@ async def db_getter() -> AsyncGenerator[AsyncSession, None]:
 
 async def redis_getter(request: Request) -> Redis:
     """获取Redis连接
-    
+
     参数:
     - request (Request): 请求对象
-    
+
     返回:
-    - Redis: Redis连接
+    - Redis: Redis连接或None（如果Redis未启用）
     """
-    return request.app.state.redis
+    from app.config.setting import settings
+    if settings.REDIS_ENABLE and hasattr(request.app.state, 'redis'):
+        return request.app.state.redis
+    return None
 
 async def get_current_user(
     request: Request,
@@ -77,10 +80,11 @@ async def get_current_user(
     if not session_id:
         raise CustomException(msg="认证已失效", code=10401, status_code=401)
 
-    # 检查用户是否在线
-    online_ok = await RedisCURD(redis).exists(key=f'{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}')
-    if not online_ok:
-        raise CustomException(msg="认证已失效", code=10401, status_code=401)
+    # 检查用户是否在线（仅当 Redis 可用时）
+    if redis:
+        online_ok = await RedisCURD(redis).exists(key=f'{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}')
+        if not online_ok:
+            raise CustomException(msg="认证已失效", code=10401, status_code=401)
 
     # 关闭数据权限过滤，避免当前用户查询被拦截
     auth = AuthSchema(db=db, check_data_scope=False)

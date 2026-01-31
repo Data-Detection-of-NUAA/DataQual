@@ -19,3 +19,4 @@ class AuditRule(ModelMixin, MappedBase):
     rule_expression: Mapped[str | None] = mapped_column(Text, comment='规则表达式(正则/JSON)')
     severity: Mapped[str] = mapped_column(String(20), default='warning', comment='严重级别：error/warning/info')
     is_active: Mapped[int] = mapped_column(Integer, default=1, comment='是否启用：1-启用，0-禁用')
+    remark: Mapped[str | None] = mapped_column(Text, default=None, comment='备注')
