@@ -31,7 +31,7 @@ RuleRouter = APIRouter(
 async def get_rule_list(
     page: PaginationQueryParam = Depends(),
     params: AuditRuleQueryParam = Depends(),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:list"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:list"]))
 ) -> JSONResponse:
     """获取规则列表（分页）"""
     rules_list = await AuditRuleService.list_service(params=params, auth=auth)
@@ -41,7 +41,7 @@ async def get_rule_list(
 
 @RuleRouter.get("/all", summary="获取所有规则")
 async def get_all_rules(
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:list"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:list"]))
 ) -> JSONResponse:
     """获取所有启用的规则（不分页，用于规则选择）"""
     rules = await AuditRuleService.get_all_active_rules(auth=auth)
@@ -50,7 +50,7 @@ async def get_all_rules(
 
 @RuleRouter.get("/options", summary="获取规则选项")
 async def get_rule_options(
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:list"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:list"]))
 ) -> JSONResponse:
     """获取所有启用的规则选项（用于下拉框）"""
     rules = await AuditRuleService.get_all_active_rules(auth=auth)
@@ -60,7 +60,7 @@ async def get_rule_options(
 @RuleRouter.get("/detail/{id}", summary="获取规则详情")
 async def get_rule_detail(
     id: int = Path(..., description="规则ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:detail"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:detail"]))
 ) -> JSONResponse:
     """获取规则详情"""
     rule = await AuditRuleService.detail_service(id=id, auth=auth)
@@ -70,7 +70,7 @@ async def get_rule_detail(
 @RuleRouter.post("/create", summary="创建规则")
 async def create_rule(
     rule_in: AuditRuleCreate,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:create"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:create"]))
 ) -> JSONResponse:
     """创建新规则"""
     rule = await AuditRuleService.create_service(obj_in=rule_in, auth=auth)
@@ -81,7 +81,7 @@ async def create_rule(
 async def update_rule(
     id: int = Query(..., description="规则ID"),
     rule_in: AuditRuleUpdate = None,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:update"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:update"]))
 ) -> JSONResponse:
     """更新规则"""
     rule = await AuditRuleService.update_service(id=id, obj_in=rule_in, auth=auth)
@@ -91,7 +91,7 @@ async def update_rule(
 @RuleRouter.delete("/delete/{id}", summary="删除规则")
 async def delete_rule(
     id: int = Path(..., description="规则ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:delete"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:delete"]))
 ) -> JSONResponse:
     """删除规则"""
     await AuditRuleService.delete_service(id=id, auth=auth)
@@ -101,7 +101,7 @@ async def delete_rule(
 @RuleRouter.delete("/delete", summary="批量删除规则")
 async def delete_rules(
     batch_in: AuditRuleBatchDelete,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:delete"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:delete"]))
 ) -> JSONResponse:
     """批量删除规则"""
     await AuditRuleService.delete_batch_service(ids=batch_in.ids, auth=auth)
@@ -111,7 +111,7 @@ async def delete_rules(
 @RuleRouter.patch("/batch", summary="批量设置规则状态")
 async def batch_update_rule_status(
     batch_in: AuditRuleBatchStatus,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:rule:patch"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:rule:patch"]))
 ) -> JSONResponse:
     """批量启用/禁用规则"""
     await AuditRuleService.batch_update_service(

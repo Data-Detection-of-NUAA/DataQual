@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const API_PATH = "/audit/regulation";
+const API_PATH = "/application/audit/regulation";
 
 const AuditRegulationAPI = {
   listRegulation(query: AuditRegulationPageQuery) {

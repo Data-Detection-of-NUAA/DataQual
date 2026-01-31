@@ -75,7 +75,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PropType } from "vue";
-import type { AuditTaskTable, AuditErrorTable } from "@/api/module_audit/task";
+import type { AuditTaskTable, AuditErrorTable } from "@/api/module_application/audit/task";
 
 interface ErrorPagination {
   page_no: number;

@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const API_PATH = "/audit/rule";
+const API_PATH = "/application/audit/rule";
 
 const AuditRuleAPI = {
   // 获取规则列表

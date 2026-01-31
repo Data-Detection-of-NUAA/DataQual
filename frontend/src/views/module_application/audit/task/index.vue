@@ -225,7 +225,7 @@ import AuditTaskAPI, {
   AuditTaskTable,
   AuditTaskForm,
   AuditTaskPageQuery,
-} from "@/api/module_audit/task";
+} from "@/api/module_application/audit/task";
 
 const queryFormRef = ref();
 const dataFormRef = ref();
@@ -392,7 +392,7 @@ async function handleDelete(ids: number[]) {
 function goToWorkflow(task: AuditTaskTable) {
   if (!task.id) return;
   router.push({
-    path: "/module_audit/task/workflow",
+    path: "/module_application/audit/task/workflow",
     query: { taskId: task.id },
   });
 }

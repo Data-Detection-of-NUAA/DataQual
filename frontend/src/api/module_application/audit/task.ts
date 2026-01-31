@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const API_PATH = "/audit/task";
+const API_PATH = "/application/audit/task";
 
 const EXECUTE_AUDIT_TIMEOUT = 60000;
 

@@ -26,7 +26,7 @@ RegulationRouter = APIRouter(
 async def list_regulations(
     page: PaginationQueryParam = Depends(),
     params: AuditRegulationQueryParam = Depends(),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:regulation:query"])),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:query"])),
 ):
     """分页获取法规列表"""
     data = await AuditRegulationService.list_service(
@@ -41,7 +41,7 @@ async def list_regulations(
 @RegulationRouter.get("/detail/{id}", summary="获取法规详情")
 async def detail_regulation(
     id: int = Path(..., description="法规ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:regulation:detail"])),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:detail"])),
 ):
     result = await AuditRegulationService.detail_service(id, auth)
     return SuccessResponse(data=result)
@@ -53,7 +53,7 @@ async def upload_regulation(
     description: str | None = Form(None, description="法规描述"),
     file_type: str = Form(..., description="文件类型"),
     file: UploadFile = File(...),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:regulation:upload"])),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:upload"])),
 ):
     result = await AuditRegulationService.upload_service(
         regulation_name=regulation_name,
@@ -68,7 +68,7 @@ async def upload_regulation(
 @RegulationRouter.delete("/delete", summary="批量删除法规")
 async def delete_regulations(
     batch_in: AuditRegulationBatchDelete,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:regulation:delete"])),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:delete"])),
 ):
     await AuditRegulationService.delete_service(batch_in.ids, auth)
     return SuccessResponse(msg="删除成功")
@@ -76,7 +76,7 @@ async def delete_regulations(
 
 @RegulationRouter.get("/options", summary="获取法规选项")
 async def regulation_options(
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:regulation:query"])),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:query"])),
 ):
     options = await AuditRegulationService.options_service(auth)
     return SuccessResponse(data=options)

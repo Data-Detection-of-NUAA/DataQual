@@ -345,7 +345,7 @@ import AuditRuleAPI, {
   AuditRuleTable,
   AuditRuleForm,
   AuditRulePageQuery,
-} from "@/api/module_audit/rule";
+} from "@/api/module_application/audit/rule";
 
 const queryFormRef = ref();
 const dataFormRef = ref();

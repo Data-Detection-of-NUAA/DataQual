@@ -131,7 +131,7 @@ import AuditRegulationAPI, {
   AuditRegulationTable,
   AuditRegulationPageQuery,
   AuditRegulationUploadForm,
-} from "@/api/module_audit/regulation";
+} from "@/api/module_application/audit/regulation";
 
 defineOptions({
   name: "AuditRegulation",

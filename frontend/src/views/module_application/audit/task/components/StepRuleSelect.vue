@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import type { PropType } from "vue";
-import type { MatchedRuleSummary } from "@/api/module_audit/task";
+import type { MatchedRuleSummary } from "@/api/module_application/audit/task";
 
 const props = defineProps({
   matching: { type: Boolean, default: false },

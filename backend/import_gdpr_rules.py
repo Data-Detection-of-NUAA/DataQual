@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.database import AsyncSession, async_engine
-from app.plugin.module_audit.rule.model import AuditRule
+from app.plugin.module_application.audit.rule.model import AuditRule
 from sqlalchemy import select
 
 

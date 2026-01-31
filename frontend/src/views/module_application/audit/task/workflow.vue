@@ -92,9 +92,9 @@ import AuditTaskAPI, {
   AuditTaskTable,
   AuditErrorTable,
   MatchedRuleSummary,
-} from "@/api/module_audit/task";
-import AuditRuleAPI, { AuditRuleTable } from "@/api/module_audit/rule";
-import AuditRegulationAPI, { AuditRegulationOption } from "@/api/module_audit/regulation";
+} from "@/api/module_application/audit/task";
+import AuditRuleAPI, { AuditRuleTable } from "@/api/module_application/audit/rule";
+import AuditRegulationAPI, { AuditRegulationOption } from "@/api/module_application/audit/regulation";
 import StepRegulation from "./components/StepRegulation.vue";
 import StepRuleSelect from "./components/StepRuleSelect.vue";
 import StepDataset from "./components/StepDataset.vue";

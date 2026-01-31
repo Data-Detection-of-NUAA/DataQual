@@ -75,7 +75,7 @@ import { ref, watch } from "vue";
 import { ElMessage, UploadFile } from "element-plus";
 import { UploadFilled } from "@element-plus/icons-vue";
 import type { PropType } from "vue";
-import type { AuditRegulationOption } from "@/api/module_audit/regulation";
+import type { AuditRegulationOption } from "@/api/module_application/audit/regulation";
 
 const props = defineProps({
   loading: { type: Boolean, default: false },

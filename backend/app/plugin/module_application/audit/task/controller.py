@@ -31,7 +31,7 @@ TaskRouter = APIRouter(
 async def create_task(
     task_name: str = Form(..., description='浠诲姟鍚嶇О', max_length=200),
     description: Optional[str] = Form(None, description='澶囨敞'),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:create"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:create"]))
 ) -> JSONResponse:
     """鍒涘缓鏂扮殑瀹¤浠诲姟"""
     task_in = AuditTaskCreate(task_name=task_name, description=description)
@@ -43,7 +43,7 @@ async def create_task(
 async def get_task_list(
     page: PaginationQueryParam = Depends(),
     params: AuditTaskQueryParam = Depends(),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:list"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:list"]))
 ) -> JSONResponse:
     """鑾峰彇浠诲姟鍒楄〃锛堝垎椤碉級"""
     tasks, total = await AuditTaskService.list_service(params=params, auth=auth)
@@ -54,7 +54,7 @@ async def get_task_list(
 @TaskRouter.get("/detail/{id}", summary="鑾峰彇浠诲姟璇︽儏")
 async def get_task_detail(
     id: int = Path(..., description="浠诲姟ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:detail"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:detail"]))
 ) -> JSONResponse:
     """鑾峰彇浠诲姟璇︽儏"""
     task = await AuditTaskService.detail_service(id=id, auth=auth)
@@ -64,7 +64,7 @@ async def get_task_detail(
 @TaskRouter.delete("/delete", summary="鍒犻櫎瀹¤浠诲姟")
 async def delete_task(
     batch_in: AuditTaskBatchDelete,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:delete"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:delete"]))
 ) -> JSONResponse:
     """鍒犻櫎瀹¤浠诲姟"""
     await AuditTaskService.delete_service(ids=batch_in.ids, auth=auth)
@@ -76,7 +76,7 @@ async def upload_regulation(
     id: int = Path(..., description="任务ID"),
     file_type: str = Form(..., description="文件类型"),
     file: UploadFile = File(...),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:upload"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:upload"]))
 ) -> JSONResponse:
     "Step 1: Upload regulation attachments for the task."
     result = await AuditTaskService.upload_regulation_service(
@@ -89,7 +89,7 @@ async def upload_regulation(
 async def use_regulation(
     id: int = Path(..., description="任务ID"),
     regulation_id: int = Path(..., description="法规ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:upload"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:upload"]))
 ) -> JSONResponse:
     "Step 1: Bind an existing regulation file to the task."
     result = await AuditTaskService.use_existing_regulation_service(
@@ -103,7 +103,7 @@ async def use_regulation(
 @TaskRouter.post("/{id}/match-rules", summary="AI匹配规则")
 async def match_rules(
     id: int = Path(..., description="任务ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:match"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:match"]))
 ) -> JSONResponse:
     "Step 2: Match rules through the AI matcher."
     result = await AuditTaskService.match_rules_service(task_id=id, auth=auth)
@@ -114,7 +114,7 @@ async def match_rules(
 async def confirm_rules(
     id: int = Path(..., description="任务ID"),
     rule_confirm: Optional[RuleConfirm] = None,
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:confirm"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:confirm"]))
 ) -> JSONResponse:
     "Step 2: Confirm which rules will be executed for the task."
     selected_rules = rule_confirm.selected_rules if rule_confirm else []
@@ -131,7 +131,7 @@ async def upload_dataset(
     id: int = Path(..., description="任务ID"),
     file_type: str = Form(..., description="文件类型"),
     file: UploadFile = File(...),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:upload"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:upload"]))
 ) -> JSONResponse:
     "Step 3: Upload task dataset for auditing."
     result = await AuditTaskService.upload_dataset_service(
@@ -143,7 +143,7 @@ async def upload_dataset(
 @TaskRouter.post("/{id}/execute", summary="鎵ц瀹¤")
 async def execute_audit(
     id: int = Path(..., description="浠诲姟ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:execute"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:execute"]))
 ) -> JSONResponse:
     """姝ラ4: 鎵ц瀹¤"""
     result = await AuditTaskService.execute_audit_service(task_id=id, auth=auth)
@@ -153,7 +153,7 @@ async def execute_audit(
 @TaskRouter.get("/{id}/result", summary="鑾峰彇瀹¤缁撴灉")
 async def get_audit_result(
     id: int = Path(..., description="浠诲姟ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:result"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:result"]))
 ) -> JSONResponse:
     """鑾峰彇瀹¤缁撴灉"""
     result = await AuditTaskService.get_audit_result_service(task_id=id, auth=auth)
@@ -165,7 +165,7 @@ async def get_errors(
     id: int = Path(..., description="浠诲姟ID"),
     page: PaginationQueryParam = Depends(),
     error_type: str = Query(None, description="閿欒绫诲瀷锛歞ata/label"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:errors"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:errors"]))
 ) -> JSONResponse:
     """鑾峰彇閿欒璇︽儏鍒楄〃锛堝垎椤碉級"""
     errors = await AuditTaskService.get_errors_service(
@@ -181,7 +181,7 @@ async def get_errors(
 @TaskRouter.get("/{id}/download-report", summary="涓嬭浇瀹¤鎶ュ憡")
 async def download_report(
     id: int = Path(..., description="浠诲姟ID"),
-    auth: AuthSchema = Depends(AuthPermission(["module_audit:task:download"]))
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:download"]))
 ):
     """涓嬭浇瀹¤鎶ュ憡"""
     file_path = await AuditTaskService.download_report_service(task_id=id, auth=auth)
