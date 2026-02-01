@@ -6,8 +6,7 @@
         <div class="max-w-7xl mx-auto">
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">DqTest</h1>
-              <p class="text-sm text-gray-500 mt-1">多模态数据集鲁棒性评估与测试平台</p>
+              <p class="text-sm text-gray-500">多模态数据集鲁棒性评估与测试平台</p>
             </div>
             <div class="flex items-center gap-2">
               <el-tag :type="getTaskStatusType()" size="small">{{ getTaskStatusText() }}</el-tag>

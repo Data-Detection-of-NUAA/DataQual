@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">6</span>
         <div>
-          <h3 class="font-bold text-gray-900">运行控制</h3>
+          <h3 class="font-bold text-gray-900">评估运行控制</h3>
           <p class="text-sm text-gray-500 mt-1">异步任务 · 进度监控 · 实时日志</p>
         </div>
       </div>
@@ -423,8 +423,8 @@ const failureCount = ref(0)
 
 // 实时结果
 const realtimeResults = ref({
-  cleanAcc: 0.85,
-  robustAcc: 0.85,
+  cleanAcc: 0.950,
+  robustAcc: 0.950,
   asr: 0.0
 })
 
@@ -619,8 +619,8 @@ const simulateTaskExecution = () => {
     }
     
     // 模拟结果变化
-    if (overallProgress.value > 20) {
-      const attackFactor = Math.min(0.6, 0.1 + (overallProgress.value - 20) / 100 * 0.5)
+    if (overallProgress.value > 50) {
+      const attackFactor = Math.min(0.228, 0.05 + (overallProgress.value - 50) / 100 * 0.356)
       realtimeResults.value.robustAcc = Math.max(0.1, realtimeResults.value.cleanAcc - attackFactor)
       realtimeResults.value.asr = Math.max(0, 1 - realtimeResults.value.robustAcc / realtimeResults.value.cleanAcc)
       

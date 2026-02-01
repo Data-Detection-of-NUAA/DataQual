@@ -228,10 +228,82 @@
           </el-form-item>
         </div>
       </el-form>
+
+      <!-- 开始训练按钮 -->
+      <div v-if="!training && !trainingComplete" class="start-training-button-container">
+        <el-button type="success" size="large" @click="startTraining">
+          <el-icon class="mr-2"><VideoPlay /></el-icon>
+          开始训练
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 训练进行中 -->
+    <div v-if="training" class="training-panel">
+      <div class="training-animation">
+        <el-icon :size="80" class="rotating-icon" color="#67c23a">
+          <Loading />
+        </el-icon>
+      </div>
+      <h3 class="training-text">模型训练中...</h3>
+      <p class="training-hint">正在训练模型，请耐心等待</p>
+      <el-progress
+        :percentage="trainingProgress"
+        :stroke-width="16"
+        :striped="true"
+        :striped-flow="true"
+        status="success"
+        class="progress-bar"
+      />
+      <div class="training-metrics">
+        <div class="metric-item">
+          <span class="metric-label">当前轮次:</span>
+          <span class="metric-value">{{ currentEpoch }} / {{ localData.trainingConfig.trainingEpochs }}</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">训练损失:</span>
+          <span class="metric-value">{{ trainingLoss.toFixed(4) }}</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">训练准确率:</span>
+          <span class="metric-value">{{ trainingAccuracy.toFixed(2) }}%</span>
+        </div>
+      </div>
+      <p class="progress-text">已完成: {{ trainingProgress }}%</p>
+    </div>
+
+    <!-- 训练完成 -->
+    <div v-if="trainingComplete" class="training-complete-panel">
+      <div class="complete-header">
+        <el-icon :size="64" color="#67c23a">
+          <CircleCheck />
+        </el-icon>
+        <h3>训练完成</h3>
+      </div>
+      <el-descriptions :column="2" border class="training-result">
+        <el-descriptions-item label="模型名称">
+          {{ selectedModelInfo?.display_name }}
+        </el-descriptions-item>
+        <el-descriptions-item label="训练轮数">
+          {{ localData.trainingConfig.trainingEpochs }}
+        </el-descriptions-item>
+        <el-descriptions-item label="最终损失">
+          {{ trainingLoss.toFixed(4) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="最终准确率">
+          {{ trainingAccuracy.toFixed(2) }}%
+        </el-descriptions-item>
+        <el-descriptions-item label="数据集名称">
+          {{ datasetInfo?.name || '未知' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="优化器">
+          {{ localData.trainingConfig.optimizer }}
+        </el-descriptions-item>
+      </el-descriptions>
     </div>
 
     <!-- 下一步按钮 -->
-    <div v-if="selectedModelInfo" class="next-button-container">
+    <div v-if="trainingComplete" class="next-button-container">
       <el-button type="primary" size="large" @click="$emit('next')">
         下一步：对抗策略选择
         <el-icon class="ml-2"><ArrowRight /></el-icon>
@@ -244,7 +316,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Setting, Loading, ArrowRight } from '@element-plus/icons-vue'
+import { Setting, Loading, ArrowRight, VideoPlay, CircleCheck } from '@element-plus/icons-vue'
 
 // ==================== 类型定义 ====================
 
@@ -306,6 +378,15 @@ const selectedModelId = ref<number | undefined>(undefined)
 // ==================== 训练配置状态 ====================
 
 const selectedModelInfo = ref<ModelRecommendationItem | null>(null)
+
+// 训练状态
+const training = ref(false)
+const trainingComplete = ref(false)
+const trainingProgress = ref(0)
+const currentEpoch = ref(0)
+const trainingLoss = ref(2.5)
+const trainingAccuracy = ref(0)
+const trainingDuration = ref(0)
 
 const localData = ref({
   modelId: null as number | null,
@@ -595,6 +676,48 @@ function getModelIconColor(index: number): string {
   return colors[index % colors.length]
 }
 
+/**
+ * 开始训练
+ */
+function startTraining() {
+  if (!selectedModelInfo.value) {
+    ElMessage.warning('请先选择模型')
+    return
+  }
+
+  training.value = true
+  trainingComplete.value = false
+  trainingProgress.value = 0
+  currentEpoch.value = 0
+  trainingLoss.value = 2.5
+  trainingAccuracy.value = 0
+  const startTime = Date.now()
+
+  ElMessage.success('开始训练模型...')
+
+  // 模拟训练过程
+  const totalEpochs = localData.value.trainingConfig.trainingEpochs
+  const epochDuration = 500 // 每轮500ms
+
+  const trainingInterval = setInterval(() => {
+    if (currentEpoch.value < totalEpochs) {
+      currentEpoch.value++
+      trainingProgress.value = Math.floor((currentEpoch.value / totalEpochs) * 100)
+      
+      // 模拟loss下降和accuracy上升
+      trainingLoss.value = 2.5 * Math.exp(-0.15 * currentEpoch.value) + Math.random() * 0.1
+      trainingAccuracy.value = Math.min(95, 30 + (currentEpoch.value / totalEpochs) * 65 + Math.random() * 5)
+    } else {
+      clearInterval(trainingInterval)
+      trainingProgress.value = 100
+      training.value = false
+      trainingComplete.value = true
+      trainingDuration.value = Math.floor((Date.now() - startTime) / 1000)
+      ElMessage.success('模型训练完成！')
+    }
+  }, epochDuration)
+}
+
 // ==================== Watchers ====================
 
 // 监听数据集ID变化，自动加载推荐
@@ -799,6 +922,125 @@ watch(() => props.modelValue, (newVal) => {
     }
   }
 
+  // ==================== 开始训练按钮样式 ====================
+  .start-training-button-container {
+    display: flex;
+    justify-content: center;
+    padding: 32px 0 24px;
+
+    .el-button {
+      min-width: 280px;
+      font-size: 15px;
+      font-weight: 500;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
+      transition: all 0.3s ease;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(103, 194, 58, 0.4);
+      }
+    }
+  }
+
+  // ==================== 训练进行中样式 ====================
+  .training-panel {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 48px 32px;
+    text-align: center;
+    background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+    border-radius: 12px;
+    border: 1px solid var(--el-border-color-light);
+
+    .training-animation {
+      margin-bottom: 24px;
+
+      .rotating-icon {
+        animation: rotate 2s linear infinite;
+      }
+    }
+
+    .training-text {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--el-text-color-primary);
+    }
+
+    .training-hint {
+      color: var(--el-text-color-secondary);
+      margin-bottom: 32px;
+    }
+
+    .progress-bar {
+      margin-bottom: 24px;
+    }
+
+    .training-metrics {
+      display: flex;
+      justify-content: space-around;
+      gap: 20px;
+      margin-bottom: 16px;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+      .metric-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        .metric-label {
+          font-size: 12px;
+          color: var(--el-text-color-secondary);
+        }
+
+        .metric-value {
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--el-color-success);
+        }
+      }
+    }
+
+    .progress-text {
+      font-size: 14px;
+      color: var(--el-text-color-secondary);
+    }
+  }
+
+  // ==================== 训练完成样式 ====================
+  .training-complete-panel {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 32px;
+    background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+    border-radius: 12px;
+    border: 1px solid var(--el-border-color-light);
+
+    .complete-header {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 32px;
+
+      h3 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--el-color-success);
+      }
+    }
+
+    .training-result {
+      border-radius: 8px;
+      overflow: hidden;
+    }
+  }
+
   // ==================== 下一步按钮样式 ====================
   .next-button-container {
     display: flex;
@@ -823,6 +1065,16 @@ watch(() => props.modelValue, (newVal) => {
   .evaluation-form {
     max-width: 800px;
     margin: 0 auto;
+  }
+
+  // ==================== 动画定义 ====================
+  @keyframes rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 }
 </style>

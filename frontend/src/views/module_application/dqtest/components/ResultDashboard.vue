@@ -98,29 +98,40 @@
               </div>
 
               <div class="space-y-3">
-                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <span class="text-sm text-gray-700">Clean Accuracy</span>
-                  <span class="font-mono text-sm font-bold text-blue-700">{{ (summary.cleanAcc * 100).toFixed(1) }}%</span>
+                <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">Clean Accuracy</span>
+                    <span class="font-mono text-sm font-bold text-blue-700">{{ (summary.cleanAcc * 100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">原始数据集上的准确率</div>
                 </div>
-                <div class="flex justify-between items-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                  <span class="text-sm text-gray-700">Robust Accuracy</span>
-                  <span class="font-mono text-sm font-bold text-emerald-700">{{ (summary.robustAcc * 100).toFixed(1) }}%</span>
+                <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">Robust Accuracy</span>
+                    <span class="font-mono text-sm font-bold text-emerald-700">{{ (summary.robustAcc * 100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">对抗样本上的准确率</div>
                 </div>
-                <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
-                  <span class="text-sm text-gray-700">Attack Success Rate</span>
-                  <span class="font-mono text-sm font-bold text-red-700">{{ (summary.asr * 100).toFixed(1) }}%</span>
+                <div class="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">Attack Success Rate</span>
+                    <span class="font-mono text-sm font-bold text-red-700">{{ (summary.asr * 100).toFixed(1) }}%</span>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">攻击成功率，越低越好</div>
                 </div>
-                <div class="flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <span class="text-sm text-gray-700">平均扰动</span>
-                  <span class="font-mono text-sm font-bold text-purple-700">ε={{ Number(summary.avgEps).toFixed(3) }}</span>
+                <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">平均扰动</span>
+                    <span class="font-mono text-sm font-bold text-purple-700">ε={{ Number(summary.avgEps).toFixed(3) }}</span>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">对抗扰动的平均大小</div>
                 </div>
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <span class="text-sm text-gray-700">总耗时</span>
-                  <span class="font-mono text-sm font-bold text-gray-900">{{ formatTime(summary.totalSeconds) }}</span>
-                </div>
-                <div v-if="summary.avgQueries > 0" class="flex justify-between items-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <span class="text-sm text-gray-700">平均查询</span>
-                  <span class="font-mono text-sm font-bold text-orange-700">{{ summary.avgQueries?.toLocaleString() }}</span>
+                <div v-if="summary.avgQueries > 0" class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">平均查询</span>
+                    <span class="font-mono text-sm font-bold text-orange-700">{{ summary.avgQueries?.toLocaleString() }}</span>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">黑盒攻击平均查询次数</div>
                 </div>
               </div>
 
@@ -150,7 +161,7 @@
                   <el-icon class="text-amber-600 mt-0.5"><InfoFilled /></el-icon>
                   <div class="text-sm text-amber-800">
                     <p class="font-medium mb-1">关于黄金数据集</p>
-                    <p class="text-xs text-amber-700">黄金数据集是经过精心标注和验证的基准数据集，用于对比模型在标准场景下的性能表现。</p>
+                    <p class="text-xs text-amber-700">黄金数据集是经过精心标注和验证的基准数据集，用于对比模型在标准场景下的性能表现。本次对比使用 CIFAR-10 基准数据集。</p>
                   </div>
                 </div>
               </div>
@@ -160,8 +171,14 @@
                   <thead>
                     <tr class="border-b-2 border-gray-300">
                       <th class="text-left py-3 px-4 text-sm font-bold text-gray-800">指标</th>
-                      <th class="text-center py-3 px-4 text-sm font-bold text-indigo-600">当前模型</th>
-                      <th class="text-center py-3 px-4 text-sm font-bold text-amber-600">黄金数据集</th>
+                      <th class="text-center py-3 px-4 text-sm font-bold text-indigo-600">
+                        <div>当前模型</div>
+                        <div class="text-xs font-normal text-indigo-500 mt-1">我的数据集</div>
+                      </th>
+                      <th class="text-center py-3 px-4 text-sm font-bold text-amber-600">
+                        <div>黄金数据集</div>
+                        <div class="text-xs font-normal text-amber-500 mt-1">CIFAR-10</div>
+                      </th>
                       <th class="text-center py-3 px-4 text-sm font-bold text-gray-700">差异</th>
                     </tr>
                   </thead>
@@ -445,9 +462,9 @@ const sampleModalOpen = ref(false)
 
 // 结果数据
 const summary = ref({
-  cleanAcc: 0.915,
-  robustAcc: 0.687,
-  asr: 0.249,
+  cleanAcc: 0.950,
+  robustAcc: 0.722,
+  asr: 0.240,
   avgEps: 0.031,
   avgQueries: 0,
   totalSeconds: 156

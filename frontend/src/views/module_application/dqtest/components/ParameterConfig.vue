@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">4</span>
         <div>
-          <h3 class="font-bold text-gray-900">参数配置</h3>
+          <h3 class="font-bold text-gray-900">对抗参数选择</h3>
           <p class="text-sm text-gray-500 mt-1" v-if="strategy.mode === 'attack'">Schema 驱动动态表单（字段/默认值/校验/依赖显示）</p>
           <p class="text-sm text-gray-500 mt-1" v-else>外部数据集评估参数配置</p>
         </div>

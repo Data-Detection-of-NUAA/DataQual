@@ -4,24 +4,13 @@
       <div class="flex items-center gap-3">
         <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shadow">5</span>
         <div>
-          <h3 class="font-bold text-gray-900">指标与输出</h3>
-          <p class="text-sm text-gray-500 mt-1">选择评估指标与产物落盘策略</p>
+          <h3 class="font-bold text-gray-900">评估方法配置</h3>
+          <p class="text-sm text-gray-500 mt-1">选择评估指标和存储选项，配置对抗样本及实验数据的保存方式</p>
         </div>
       </div>
       <div class="flex items-center gap-2 text-xs text-gray-500">
         <el-icon><PieChart /></el-icon>
         <span>Metrics & Outputs</span>
-      </div>
-    </div>
-
-    <!-- 模块功能说明 -->
-    <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <div class="flex items-start gap-3">
-        <el-icon class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"><InfoFilled /></el-icon>
-        <div class="text-sm text-blue-900">
-          <p class="font-semibold mb-1">配置评估结果的计算和保存方式</p>
-          <p class="text-blue-800">在此模块中，您需要选择用于衡量模型鲁棒性的评估指标，以及配置对抗样本和实验数据的存储选项。这些配置将决定评估结束后生成哪些分析报告和数据文件。</p>
-        </div>
       </div>
     </div>
 
