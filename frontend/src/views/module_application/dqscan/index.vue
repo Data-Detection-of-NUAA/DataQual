@@ -2054,6 +2054,61 @@
                               }}</el-descriptions-item>
                             </el-descriptions>
 
+                            <!-- 疑似错标专用展示区 -->
+                            <template v-if="d.labelMismatchIssues?.length">
+                              <div class="flex items-center gap-2 mt-3 mb-2">
+                                <span class="font-bold">疑似错标清单</span>
+                                <el-tag type="warning" effect="plain" size="small">
+                                  共 {{ d.labelMismatchIssues.length }} 条
+                                </el-tag>
+                              </div>
+                              <el-table
+                                :data="d.labelMismatchIssues"
+                                border
+                                size="small"
+                                class="dqscan-issue-table"
+                              >
+                                <el-table-column type="expand" width="42">
+                                  <template #default="{ row }">
+                                    <div class="p-2">
+                                      <el-table v-if="row.previewRows?.length" :data="row.previewRows" border size="small">
+                                        <el-table-column prop="field" label="字段" min-width="180" />
+                                        <el-table-column prop="value" label="值" min-width="220" />
+                                      </el-table>
+                                      <el-empty v-else description="暂无样本预览" />
+                                    </div>
+                                  </template>
+                                </el-table-column>
+                                <el-table-column prop="data_id" label="样本 ID" width="130">
+                                  <template #default="{ row }">
+                                    <span class="font-mono text-xs">{{ row.data_id }}</span>
+                                  </template>
+                                </el-table-column>
+                                <el-table-column label="原始标签" width="150">
+                                  <template #default="{ row }">
+                                    <el-tag size="small" type="danger" effect="plain">{{ row.given_label }}</el-tag>
+                                  </template>
+                                </el-table-column>
+                                <el-table-column label="" width="36">
+                                  <template #default>
+                                    <span class="text-gray text-xs">→</span>
+                                  </template>
+                                </el-table-column>
+                                <el-table-column label="建议标签" width="150">
+                                  <template #default="{ row }">
+                                    <el-tag size="small" type="success" effect="plain">{{ row.suggested_label }}</el-tag>
+                                  </template>
+                                </el-table-column>
+                                <el-table-column prop="prob_given" label="原始置信度" width="100" />
+                                <el-table-column prop="prob_suggested" label="预测置信度" width="100" />
+                                <el-table-column prop="severity" label="严重度" width="90">
+                                  <template #default="{ row }">
+                                    <el-tag size="small" effect="plain" :type="severityTagType(row.severity)">{{ row.severity }}</el-tag>
+                                  </template>
+                                </el-table-column>
+                              </el-table>
+                            </template>
+
                             <el-table
                               v-if="d.sampleRows.length"
                               :data="d.sampleRows"
