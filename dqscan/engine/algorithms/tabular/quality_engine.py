@@ -265,7 +265,7 @@ class TabularQualityEngine:
                             exclude_cols = [exclude_cols_raw.strip()]
 
                         lm_max_examples = lm_params.get("max_examples") or lm_cfg.get("max_examples") or dirty_cfg.get(
-                            "max_examples", report_cfg.get("max_examples", 50)
+                            "max_examples", report_cfg.get("max_examples", 500)
                         )
                         try:
                             lm_scanner = TabularLabelMismatchScanner(
@@ -300,13 +300,33 @@ class TabularQualityEngine:
                             if lm_issues:
                                 merged = list(base_issues) + list(lm_issues)
                                 res["detailed_issues"] = merged[: int(lm_max_examples)]
+                            # 统一汇总 total_issues / has_issues / issue_percentage（避免只跑 label_mismatch 时仍显示“无问题”）
                             try:
-                                res["total_issues"] = int(res.get("total_issues", 0) or 0) + int(lm_res.get("total_issues", 0) or 0)
+                                base_total = int(res.get("total_issues", 0) or 0)
+                                lm_total = int(
+                                    lm_res.get("total_issues", lm_res.get("label_mismatch_count", 0) or 0) or 0
+                                )
+                                total_issues = int(base_total + lm_total)
+                                res["total_issues"] = total_issues
+                                res["has_issues"] = bool(total_issues > 0)
+                                res["issue_percentage"] = float(total_issues / max(int(len(df)), 1))
                             except Exception:
                                 pass
                             checks = res.get("enabled_checks")
                             if isinstance(checks, list) and "label_mismatch" not in checks:
                                 checks.append("label_mismatch")
+                            # 若仅勾选“疑似错标”，dirty_data 的算法展示应以 label_mismatch 为主，避免误解为跑了异常值检测
+                            try:
+                                checks = res.get("enabled_checks") if isinstance(res.get("enabled_checks"), list) else []
+                                base_checks = {"anomaly", "missing", "duplicate", "range"}
+                                base_ran = any((c in base_checks) for c in checks)
+                                lm_algo = str(lm_res.get("algorithm") or "").strip()
+                                if not base_ran:
+                                    res["algorithm"] = f"疑似错标（{lm_algo}）" if lm_algo else "疑似错标检测"
+                                elif lm_algo and isinstance(res.get("algorithm"), str) and "疑似错标" not in res.get("algorithm", ""):
+                                    res["algorithm"] = f"{res.get('algorithm')} + 疑似错标"
+                            except Exception:
+                                pass
 
             elif module == "distribution":
                 # 分布漂移（两种模式）：
@@ -690,11 +710,12 @@ class TabularQualityEngine:
                         "constraint_violations": module_res.get("constraint_violations", 0),
                     }
 
+                issue_limit = 500 if defect_key == "dirty_data.label_mismatch" else 50
                 base.update(
                     {
                         "status": "SUCCESS",
                         "metrics": metrics,
-                        "issues": issues[:50],
+                        "issues": issues[:issue_limit],
                     }
                 )
                 defect_results[defect_key] = base
