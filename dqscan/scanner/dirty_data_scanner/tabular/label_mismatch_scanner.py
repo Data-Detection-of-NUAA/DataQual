@@ -79,7 +79,7 @@ class TabularLabelMismatchScanner(BaseScanner):
         *,
         label_column: str,
         exclude_columns: Optional[list[str]] = None,
-        max_examples: int = 50,
+        max_examples: int = 500,
     ) -> dict[str, Any]:
         if not (PANDAS_AVAILABLE and SKLEARN_AVAILABLE):
             missing = []
@@ -362,6 +362,7 @@ class TabularLabelMismatchScanner(BaseScanner):
                         "margin": round(float(margin[i]), 6),
                         "rank": int(rank),
                         "reason": "cv_consistency_low_prob_given_and_confident_other",
+                        "row_preview": self._row_preview(df, int(i)),
                     },
                 }
             )
@@ -545,6 +546,7 @@ class TabularLabelMismatchScanner(BaseScanner):
                         "margin": round(m, 6),
                         "rank": int(rank),
                         "reason": reason,
+                        "row_preview": self._row_preview(df, int(i)),
                     },
                 }
             )
@@ -564,6 +566,31 @@ class TabularLabelMismatchScanner(BaseScanner):
             return int(idx) if str(idx).isdigit() else idx
         except Exception:
             return int(i)
+
+    def _row_preview(self, df: "pd.DataFrame", i: int, *, max_fields: int = 30) -> dict[str, Any]:
+        if not PANDAS_AVAILABLE:
+            return {}
+        try:
+            row = df.iloc[int(i)]
+        except Exception:
+            return {}
+
+        cols = list(df.columns)[: int(max_fields)]
+        preview: dict[str, Any] = {}
+        for c in cols:
+            try:
+                v = row.get(c)
+            except Exception:
+                v = None
+            try:
+                if pd.isna(v):
+                    v = None
+            except Exception:
+                pass
+            if isinstance(v, str) and len(v) > 200:
+                v = v[:200] + "…"
+            preview[str(c)] = v
+        return preview
 
     def _one_hot_encoder(self):
         try:
