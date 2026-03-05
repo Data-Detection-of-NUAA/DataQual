@@ -4704,8 +4704,11 @@ function moduleTitle(key: string) {
 	    // Prefer full issues from task `result.json` (not compacted like report json).
 	    const fullModuleRes = (result.value?.modules || {})?.[activeReportModule.value];
 	    const fullIssues = Array.isArray(fullModuleRes?.detailed_issues) ? fullModuleRes.detailed_issues : null;
-	    const issues = fullIssues || (Array.isArray(dtResult.detailed_issues) ? dtResult.detailed_issues : []);
-	    const normalizedIssues = issues.slice(0, 50).map((it: any) => ({
+	    const allRawIssues = fullIssues || (Array.isArray(dtResult.detailed_issues) ? dtResult.detailed_issues : []);
+	    const lmRaw = allRawIssues.filter((it: any) => issueKindFromType(it?.issue_type) === "label_mismatch");
+	    const otherRaw = allRawIssues.filter((it: any) => issueKindFromType(it?.issue_type) !== "label_mismatch");
+
+	    const normalizedIssues = otherRaw.slice(0, 50).map((it: any) => ({
 	      issue_type: String(it?.issue_type ?? "未知"),
 	      data_id: String(it?.data_id ?? "-"),
 	      severity: String(it?.severity ?? "-"),
@@ -4732,8 +4735,31 @@ function moduleTitle(key: string) {
 	      })(),
 	    }));
 
+	    const labelMismatchIssues = lmRaw.slice(0, 500).map((it: any) => ({
+	      data_id: String(it?.data_id ?? "-"),
+	      given_label: String(it?.details?.given_label ?? "-"),
+	      suggested_label: String(it?.details?.suggested_label ?? "-"),
+	      prob_given: `${(Number(it?.details?.prob_given ?? 0) * 100).toFixed(1)}%`,
+	      prob_suggested: `${(Number(it?.details?.prob_suggested ?? 0) * 100).toFixed(1)}%`,
+	      severity: String(it?.severity ?? "-"),
+	      previewRows: (() => {
+	        const rp = it?.details?.row_preview;
+	        if (!rp || typeof rp !== "object") return [];
+	        try {
+	          return Object.entries(rp)
+	            .slice(0, 30)
+	            .map(([k, v]) => ({
+	              field: String(k),
+	              value: typeof v === "object" ? JSON.stringify(v) : String(v),
+	            }));
+	        } catch {
+	          return [];
+	        }
+	      })(),
+	    }));
+
 	    const sampleRows = normalizedIssues
-	      .filter((x: any) => x?.row_preview && ["anomaly", "duplicate", "label_mismatch"].includes(x.issue_kind))
+	      .filter((x: any) => x?.row_preview && ["anomaly", "duplicate"].includes(x.issue_kind))
 	      .slice(0, 20)
 	      .map((x: any) => ({
 	        issue_type: x.issue_type,
@@ -4763,6 +4789,7 @@ function moduleTitle(key: string) {
 	      sampleRows,
 	      sampleColumns,
 	      issues: normalizedIssues,
+	      labelMismatchIssues,
 	    };
 	  });
 	});
