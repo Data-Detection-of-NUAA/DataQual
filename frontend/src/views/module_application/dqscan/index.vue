@@ -1503,6 +1503,79 @@
 		
 		                                <el-text type="info">该算法参数仅在绑定该算法的缺陷上生效。</el-text>
 		                              </template>
+
+		                              <template v-else-if="algoKey === 'confident_learning' || algoKey === 'cv_consistency'">
+		                                <template v-if="boundDefectKeys(m.key, algoKey).includes('dirty_data.label_mismatch')">
+		                                  <el-form-item label="标签列（Label Mismatch）">
+		                                    <el-select v-model="labelMismatchLabelColumn" clearable filterable placeholder="选择标签列">
+		                                      <el-option v-for="c in columnOptions" :key="c" :label="c" :value="c" />
+		                                    </el-select>
+		                                    <el-text type="info" class="block mt-2">必填：用于发现“疑似错标”样本（例如猫被标成狗）。</el-text>
+		                                  </el-form-item>
+
+		                                  <el-form-item label="排除字段">
+		                                    <el-popover placement="bottom-start" :width="420" trigger="click">
+		                                      <template #reference>
+		                                        <el-input :model-value="labelMismatchExcludeColumnsDisplay" readonly placeholder="点击选择要排除的列" />
+		                                      </template>
+		                                      <div v-if="columnsLoading" class="text-sm text-gray">正在解析列名...</div>
+		                                      <div v-else-if="columnsError" class="text-sm text-red">{{ columnsError }}</div>
+		                                      <el-scrollbar v-else height="220px">
+		                                        <el-checkbox-group v-model="labelMismatchExcludeColumns" class="flex flex-col gap-1">
+		                                          <el-checkbox v-for="c in columnOptions" :key="c" :label="c">{{ c }}</el-checkbox>
+		                                        </el-checkbox-group>
+		                                      </el-scrollbar>
+		                                      <div class="mt-2 flex justify-end gap-2">
+		                                        <el-button size="small" @click="labelMismatchExcludeColumns = []">清空</el-button>
+		                                      </div>
+		                                    </el-popover>
+		                                    <el-text type="info" class="block mt-2">建议排除 id/uuid/时间戳等高基数字段，避免模型“记住样本”。</el-text>
+		                                  </el-form-item>
+
+		                                  <el-form-item label="抽样上限">
+		                                    <el-input-number v-model="labelMismatchMaxSamples" :min="100" :max="500000" :step="100" />
+		                                  </el-form-item>
+		                                  <el-form-item label="交叉验证折数">
+		                                    <el-input-number v-model="labelMismatchNSplits" :min="2" :max="10" :step="1" />
+		                                  </el-form-item>
+		                                  <el-form-item label="P(给定标签)阈值">
+		                                    <el-slider v-model="labelMismatchThresholdProbTrue" :min="0" :max="0.8" :step="0.01" show-input />
+		                                  </el-form-item>
+		                                  <el-form-item label="P(建议标签)阈值">
+		                                    <el-slider v-model="labelMismatchThresholdProbPred" :min="0.2" :max="0.99" :step="0.01" show-input />
+		                                  </el-form-item>
+
+		                                  <template v-if="algoKey === 'confident_learning'">
+		                                    <el-form-item label="Score 方法">
+		                                      <el-select v-model="labelMismatchScoreMethod" placeholder="选择打分方式">
+		                                        <el-option label="self_confidence（默认）" value="self_confidence" />
+		                                        <el-option label="normalized_margin" value="normalized_margin" />
+		                                        <el-option label="confidence_weighted_entropy" value="confidence_weighted_entropy" />
+		                                      </el-select>
+		                                    </el-form-item>
+		                                    <el-form-item label="筛选策略">
+		                                      <el-select v-model="labelMismatchFilterBy" placeholder="选择筛选策略">
+		                                        <el-option label="both（推荐）" value="both" />
+		                                        <el-option label="prune_by_class" value="prune_by_class" />
+		                                        <el-option label="prune_by_noise_rate" value="prune_by_noise_rate" />
+		                                        <el-option label="confident_learning（仅高置信冲突）" value="confident_learning" />
+		                                      </el-select>
+		                                    </el-form-item>
+		                                    <el-form-item label="fraction_noise">
+		                                      <el-slider v-model="labelMismatchFractionNoise" :min="0" :max="0.3" :step="0.005" show-input />
+		                                      <el-text type="info" class="block mt-2">控制“按类剪枝”候选集规模（越小越严格）。</el-text>
+		                                    </el-form-item>
+		                                  </template>
+
+		                                  <el-form-item label="输出样例数">
+		                                    <el-input-number v-model="labelMismatchMaxExamples" :min="10" :max="500" :step="10" />
+		                                  </el-form-item>
+
+		                                  <el-text type="info" class="block mt-2">
+		                                    这些配置会写入“疑似错标（Label Mismatch）”缺陷的参数中（`label_column/exclude_columns/...`）。
+		                                  </el-text>
+		                                </template>
+		                              </template>
 		
 		                              <template v-else-if="algoKey === 'missing_stats_threshold'">
 		                                <el-form-item label="缺失阈值（missing_threshold）">
@@ -1918,10 +1991,10 @@
                           </template>
 
 	                          <template v-else-if="activeReportModuleType === 'dirty_data'">
-	                            <el-table-column prop="anomalyRate" label="异常率" width="90" />
-	                            <el-table-column prop="missingRate" label="缺失率" width="90" />
-	                            <el-table-column prop="duplicateRate" label="重复率" width="90" />
-	                            <el-table-column prop="labelMismatchRate" label="疑似错标率" width="110" />
+	                            <el-table-column v-if="dirtyReportShowAnomaly" prop="anomalyRate" label="异常率" width="90" />
+	                            <el-table-column v-if="dirtyReportShowMissing" prop="missingRate" label="缺失率" width="90" />
+	                            <el-table-column v-if="dirtyReportShowDuplicate" prop="duplicateRate" label="重复率" width="90" />
+	                            <el-table-column v-if="dirtyReportShowLabelMismatch" prop="labelMismatchRate" label="疑似错标率" width="110" />
 	                          </template>
 
                           <template v-else-if="activeReportModuleType === 'adversarial'">
@@ -1946,7 +2019,7 @@
                           </el-table-column>
                         </el-table>
 
-                        <el-card v-if="activeReportModuleType === 'dirty_data'" shadow="never" class="mt-3">
+                        <el-card v-if="activeReportModuleType === 'dirty_data' && dirtyReportShowRateChart" shadow="never" class="mt-3">
                           <ECharts :options="dirtyRateChartOptions" height="320px" />
                         </el-card>
                       </el-card>
@@ -1981,10 +2054,80 @@
                               }}</el-descriptions-item>
                             </el-descriptions>
 
-                            <el-table v-if="d.issues.length" :data="d.issues" border size="small" class="mt-2">
-                              <el-table-column prop="issue_type" label="问题类型" width="140" />
-                              <el-table-column prop="data_id" label="位置/字段" width="160" />
-                              <el-table-column prop="severity" label="严重度" width="90" />
+                            <el-table
+                              v-if="d.sampleRows.length"
+                              :data="d.sampleRows"
+                              border
+                              size="small"
+                              class="mt-2 dqscan-issue-table"
+                              :row-class-name="issueRowClassName"
+                            >
+                              <el-table-column prop="issue_type" label="问题类型" width="140">
+                                <template #default="{ row }">
+                                  <el-tag size="small" effect="plain" :style="issueTagStyle(row.issue_type)">{{ row.issue_type }}</el-tag>
+                                </template>
+                              </el-table-column>
+                              <el-table-column prop="data_id" label="样本" width="160">
+                                <template #default="{ row }">
+                                  <span class="font-mono text-xs">{{ row.data_id }}</span>
+                                </template>
+                              </el-table-column>
+                              <el-table-column prop="severity" label="严重度" width="90">
+                                <template #default="{ row }">
+                                  <el-tag size="small" effect="plain" :type="severityTagType(row.severity)">{{ row.severity }}</el-tag>
+                                </template>
+                              </el-table-column>
+
+                              <el-table-column v-for="c in d.sampleColumns" :key="c" :label="c" min-width="140" show-overflow-tooltip>
+                                <template #default="{ row }">
+                                  <span class="text-xs">{{ row.row_preview?.[c] ?? "-" }}</span>
+                                </template>
+                              </el-table-column>
+                            </el-table>
+
+                            <el-table
+                              v-if="d.issues.length"
+                              :data="d.issues"
+                              border
+                              size="small"
+                              class="mt-2 dqscan-issue-table"
+                              :row-class-name="issueRowClassName"
+                            >
+                              <el-table-column type="expand" width="42">
+                                <template #default="{ row }">
+                                  <div class="p-2">
+                                    <div class="flex items-center gap-2 mb-2">
+                                      <el-tag size="small" effect="plain" :style="issueTagStyle(row.issue_type)">{{ row.issue_type }}</el-tag>
+                                      <span class="font-mono text-xs text-gray">{{ row.data_id }}</span>
+                                      <el-tag size="small" effect="plain" :type="severityTagType(row.severity)">{{ row.severity }}</el-tag>
+                                    </div>
+                                    <el-text type="info" class="block">{{ row.detailsText }}</el-text>
+
+                                    <el-divider class="my-2" />
+
+                                    <el-table v-if="row.previewRows?.length" :data="row.previewRows" border size="small">
+                                      <el-table-column prop="field" label="字段" min-width="180" />
+                                      <el-table-column prop="value" label="值" min-width="220" />
+                                    </el-table>
+                                    <el-empty v-else description="暂无样本预览" />
+                                  </div>
+                                </template>
+                              </el-table-column>
+                              <el-table-column prop="issue_type" label="问题类型" width="140">
+                                <template #default="{ row }">
+                                  <el-tag size="small" effect="plain" :style="issueTagStyle(row.issue_type)">{{ row.issue_type }}</el-tag>
+                                </template>
+                              </el-table-column>
+                              <el-table-column prop="data_id" label="位置/字段" width="160">
+                                <template #default="{ row }">
+                                  <span class="font-mono text-xs">{{ row.data_id }}</span>
+                                </template>
+                              </el-table-column>
+                              <el-table-column prop="severity" label="严重度" width="90">
+                                <template #default="{ row }">
+                                  <el-tag size="small" effect="plain" :type="severityTagType(row.severity)">{{ row.severity }}</el-tag>
+                                </template>
+                              </el-table-column>
                               <el-table-column prop="detailsText" label="详情" min-width="180" />
                             </el-table>
 
@@ -2064,7 +2207,7 @@ const selectedModality = ref<string>("tabular");
 	type ModuleKey = "distribution" | "dirty_data" | "adversarial" | "physics";
 	const modules: { key: ModuleKey; title: string; desc: string }[] = [
 	  { key: "distribution", title: "分布偏差检测", desc: "基线对比 / 免基线切分模拟" },
-	  { key: "dirty_data", title: "脏数据扫描", desc: "异常/缺失/重复/值域违规" },
+	  { key: "dirty_data", title: "脏数据扫描", desc: "异常/缺失/重复/值域违规/疑似错标" },
 	  { key: "adversarial", title: "对抗性检测", desc: "扰动攻击下模型脆弱性评估" },
 	  { key: "physics", title: "物理保真度扫描", desc: "规则/约束一致性校验" },
 	];
@@ -3192,10 +3335,10 @@ const selectedModality = ref<string>("tabular");
 				  }
 
 					  if (labelShiftMissingColumn.value) {
-					    issues.push("已启用“标签分布变化”，请在“算法参数”中选择标签列。");
+					    issues.push("已启用“标签分布变化”，请在“分布偏差 → 算法参数”中选择标签列。");
 					  }
 					  if (labelMismatchMissingColumn.value) {
-					    issues.push("已启用“疑似错标检测”，请在“算法参数”中选择标签列。");
+					    issues.push("已启用“疑似错标检测”，请在“脏数据 → 算法参数”中选择标签列。");
 					  }
 
 					  return issues.join("；");
@@ -3465,7 +3608,7 @@ const selectedModality = ref<string>("tabular");
 			const labelMismatchScoreMethod = ref<"self_confidence" | "normalized_margin" | "confidence_weighted_entropy">("self_confidence");
 			const labelMismatchFilterBy = ref<"both" | "prune_by_class" | "prune_by_noise_rate" | "confident_learning">("both");
 			const labelMismatchFractionNoise = ref(0.05);
-			const labelMismatchMaxExamples = ref(50);
+			const labelMismatchMaxExamples = ref(500);
 
 	// 对抗性模块参数（UI 侧）
 	const adversarialEpsilon = ref(0.05);
@@ -3507,6 +3650,7 @@ const selectedModality = ref<string>("tabular");
 		    selectedLeafDefectCount.value > 0 &&
 		    !baselineMissing.value &&
 		    !labelShiftMissingColumn.value &&
+		    !labelMismatchMissingColumn.value &&
 		    missingExecutorDefects.value.length === 0 &&
 		    !starting.value
 		);
@@ -3657,7 +3801,7 @@ function clearPoll() {
 				  labelMismatchScoreMethod.value = "self_confidence";
 				  labelMismatchFilterBy.value = "both";
 				  labelMismatchFractionNoise.value = 0.05;
-				  labelMismatchMaxExamples.value = 50;
+				  labelMismatchMaxExamples.value = 500;
 			  adversarialEpsilon.value = 0.05;
 			  adversarialMaxIter.value = 20;
 			  adversarialRandomTrials.value = 40;
@@ -3945,7 +4089,11 @@ async function refreshTask() {
 		    return;
 		  }
 		  if (labelShiftMissingColumn.value) {
-		    ElMessage.warning("已启用“标签分布变化”，请先在“算法参数”中选择标签列。");
+		    ElMessage.warning("已启用“标签分布变化”，请先在“分布偏差 → 算法参数”中选择标签列。");
+		    return;
+		  }
+		  if (labelMismatchMissingColumn.value) {
+		    ElMessage.warning("已启用“疑似错标检测”，请先在“脏数据 → 算法参数”中选择标签列。");
 		    return;
 		  }
 		  if (missingExecutorDefects.value.length) {
@@ -4260,7 +4408,26 @@ function moduleTitle(key: string) {
     const mr = r.modules[k] || {};
     const rep = r.reports?.[k]?.paths || {};
     const extra = (() => {
-      if (k === "dirty_data") return { label: "异常率", value: mr.anomaly_rate };
+      if (k === "dirty_data") {
+        const checks = Array.isArray(mr.enabled_checks) ? mr.enabled_checks.map((x: any) => String(x)) : [];
+        if (!checks.length) return { label: "异常率", value: mr.anomaly_rate };
+
+        const hasAnomaly = checks.includes("anomaly");
+        const hasMissing = checks.includes("missing");
+        const hasDuplicate = checks.includes("duplicate");
+        const hasRange = checks.includes("range");
+        const hasLabelMismatch = checks.includes("label_mismatch");
+
+        if (hasLabelMismatch && !(hasAnomaly || hasMissing || hasDuplicate || hasRange)) {
+          return { label: "疑似错标率", value: mr.label_mismatch_rate };
+        }
+        if (hasAnomaly) return { label: "异常率", value: mr.anomaly_rate };
+        if (hasMissing) return { label: "缺失率", value: mr.missing_rate };
+        if (hasDuplicate) return { label: "重复率", value: mr.duplicate_rate };
+        if (hasLabelMismatch) return { label: "疑似错标率", value: mr.label_mismatch_rate };
+        if (hasRange) return { label: "值域违规数", value: mr?.range_violations?.total_violations ?? 0 };
+        return null;
+      }
       if (k === "distribution") return { label: "p值", value: mr.p_value };
       if (k === "adversarial") return { label: "攻击成功率", value: mr.attack_success_rate };
       if (k === "physics") return { label: "违规率", value: mr.violation_rate };
@@ -4301,6 +4468,36 @@ function moduleTitle(key: string) {
 	  return Object.values(rs).reduce((acc: number, v: any) => acc + Number(v?.total_issues ?? 0), 0);
 	});
 	const activeReportModuleMeta = computed(() => resultModules.value.find((x) => x.key === activeReportModule.value) || null);
+	const dirtyReportEnabledChecks = computed(() => {
+	  if (activeReportModuleType.value !== "dirty_data") return new Set<string>();
+	  const rs: Record<string, any> = activeReport.value?.results || {};
+	  const out = new Set<string>();
+	  for (const dt of Object.keys(rs)) {
+	    const checks = rs?.[dt]?.enabled_checks;
+	    if (!Array.isArray(checks)) continue;
+	    for (const c of checks) {
+	      const cc = String(c || "").trim();
+	      if (cc) out.add(cc);
+	    }
+	  }
+	  return out;
+	});
+	const dirtyReportShowCheck = (check: string) => {
+	  const s = dirtyReportEnabledChecks.value;
+	  if (!s.size) return true;
+	  return s.has(check);
+	};
+	const dirtyReportShowAnomaly = computed(() => dirtyReportShowCheck("anomaly"));
+	const dirtyReportShowMissing = computed(() => dirtyReportShowCheck("missing"));
+	const dirtyReportShowDuplicate = computed(() => dirtyReportShowCheck("duplicate"));
+	const dirtyReportShowLabelMismatch = computed(() => dirtyReportShowCheck("label_mismatch"));
+	const dirtyReportShowRateChart = computed(
+	  () =>
+	    dirtyReportShowAnomaly.value ||
+	    dirtyReportShowMissing.value ||
+	    dirtyReportShowDuplicate.value ||
+	    dirtyReportShowLabelMismatch.value,
+	);
 
 	function scoreColor(score: number): string {
 	  if (score >= 90) return "#28A745";
@@ -4372,33 +4569,47 @@ function moduleTitle(key: string) {
 		  const missing = keys.map((k) => Number(rs[k]?.missing_rate ?? 0) * 100);
 		  const duplicate = keys.map((k) => Number(rs[k]?.duplicate_rate ?? 0) * 100);
 		  const labelMismatch = keys.map((k) => Number(rs[k]?.label_mismatch_rate ?? 0) * 100);
+
+		  const series: any[] = [];
+		  const legend: string[] = [];
+		  if (dirtyReportShowAnomaly.value) {
+		    legend.push("异常率");
+		    series.push({
+		      name: "异常率",
+		      type: "bar",
+		      data: anomaly,
+		      itemStyle: { color: "#DC3545" },
+		      markLine: {
+		        symbol: ["none", "none"],
+		        label: { show: false },
+		        lineStyle: { type: "dashed" },
+		        data: [
+		          { yAxis: 5, lineStyle: { color: "#28A745" } },
+		          { yAxis: 10, lineStyle: { color: "#FFC107" } },
+		        ],
+		      },
+		    });
+		  }
+		  if (dirtyReportShowMissing.value) {
+		    legend.push("缺失率");
+		    series.push({ name: "缺失率", type: "bar", data: missing, itemStyle: { color: "#FFC107" } });
+		  }
+		  if (dirtyReportShowDuplicate.value) {
+		    legend.push("重复率");
+		    series.push({ name: "重复率", type: "bar", data: duplicate, itemStyle: { color: "#17A2B8" } });
+		  }
+		  if (dirtyReportShowLabelMismatch.value) {
+		    legend.push("疑似错标率");
+		    series.push({ name: "疑似错标率", type: "bar", data: labelMismatch, itemStyle: { color: "#6F42C1" } });
+		  }
 		  return {
 		    title: { text: "问题率对比", left: "center", textStyle: { fontSize: 16, fontWeight: "bold" } },
 		    grid: { left: 70, right: 30, top: 60, bottom: 50 },
 		    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-		    legend: { top: 30, right: 10, data: ["异常率", "缺失率", "重复率", "疑似错标率"] },
+		    legend: { top: 30, right: 10, data: legend },
 		    xAxis: { type: "category", data: labels },
 		    yAxis: { type: "value", name: "百分比 (%)", min: 0, max: 100 },
-		    series: [
-		      {
-		        name: "异常率",
-		        type: "bar",
-		        data: anomaly,
-	        itemStyle: { color: "#DC3545" },
-	        markLine: {
-	          symbol: ["none", "none"],
-	          label: { show: false },
-	          lineStyle: { type: "dashed" },
-	          data: [
-	            { yAxis: 5, lineStyle: { color: "#28A745" } },
-	            { yAxis: 10, lineStyle: { color: "#FFC107" } },
-	          ],
-	        },
-		      },
-		      { name: "缺失率", type: "bar", data: missing, itemStyle: { color: "#FFC107" } },
-		      { name: "重复率", type: "bar", data: duplicate, itemStyle: { color: "#17A2B8" } },
-		      { name: "疑似错标率", type: "bar", data: labelMismatch, itemStyle: { color: "#6F42C1" } },
-		    ],
+		    series,
 		  } as any;
 		});
 
@@ -4425,10 +4636,10 @@ function moduleTitle(key: string) {
 	      base.pValue = Number(dtScore?.p_value ?? dtResult.p_value ?? 1).toFixed(4);
 	      base.drift = dtResult.drift_detected ? "是" : "否";
 		    } else if (moduleType === "dirty_data") {
-		      base.anomalyRate = `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(1)}%`;
-		      base.missingRate = `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(1)}%`;
-		      base.duplicateRate = `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(1)}%`;
-		      base.labelMismatchRate = `${(Number(dtResult.label_mismatch_rate ?? 0) * 100).toFixed(1)}%`;
+		      if (dirtyReportShowAnomaly.value) base.anomalyRate = `${(Number(dtResult.anomaly_rate ?? 0) * 100).toFixed(1)}%`;
+		      if (dirtyReportShowMissing.value) base.missingRate = `${(Number(dtResult.missing_rate ?? 0) * 100).toFixed(1)}%`;
+		      if (dirtyReportShowDuplicate.value) base.duplicateRate = `${(Number(dtResult.duplicate_rate ?? 0) * 100).toFixed(1)}%`;
+		      if (dirtyReportShowLabelMismatch.value) base.labelMismatchRate = `${(Number(dtResult.label_mismatch_rate ?? 0) * 100).toFixed(1)}%`;
 		    } else if (moduleType === "adversarial") {
 		      base.attackSuccessRate = `${(Number(dtResult.attack_success_rate ?? 0) * 100).toFixed(1)}%`;
 		      base.robustnessScore = `${(Number(dtResult.robustness_score ?? 0) * 100).toFixed(1)}%`;
@@ -4490,13 +4701,55 @@ function moduleTitle(key: string) {
 	      extraMetrics.push({ label: "保真度", value: String(dtScore?.fidelity_level || "N/A") });
 	    }
 
-	    const issues = Array.isArray(dtResult.detailed_issues) ? dtResult.detailed_issues : [];
+	    // Prefer full issues from task `result.json` (not compacted like report json).
+	    const fullModuleRes = (result.value?.modules || {})?.[activeReportModule.value];
+	    const fullIssues = Array.isArray(fullModuleRes?.detailed_issues) ? fullModuleRes.detailed_issues : null;
+	    const issues = fullIssues || (Array.isArray(dtResult.detailed_issues) ? dtResult.detailed_issues : []);
 	    const normalizedIssues = issues.slice(0, 50).map((it: any) => ({
 	      issue_type: String(it?.issue_type ?? "未知"),
 	      data_id: String(it?.data_id ?? "-"),
 	      severity: String(it?.severity ?? "-"),
 	      detailsText: issueDetailsText(it?.details),
+	      issue_kind: issueKindFromType(it?.issue_type),
+	      row_preview: (() => {
+	        const rp = it?.details?.row_preview;
+	        if (!rp || typeof rp !== "object" || Array.isArray(rp)) return null;
+	        return rp as Record<string, any>;
+	      })(),
+	      previewRows: (() => {
+	        const rp = it?.details?.row_preview;
+	        if (!rp || typeof rp !== "object") return [];
+	        try {
+	          return Object.entries(rp)
+	            .slice(0, 30)
+	            .map(([k, v]) => ({
+	              field: String(k),
+	              value: typeof v === "object" ? JSON.stringify(v) : String(v),
+	            }));
+	        } catch {
+	          return [];
+	        }
+	      })(),
 	    }));
+
+	    const sampleRows = normalizedIssues
+	      .filter((x: any) => x?.row_preview && ["anomaly", "duplicate", "label_mismatch"].includes(x.issue_kind))
+	      .slice(0, 20)
+	      .map((x: any) => ({
+	        issue_type: x.issue_type,
+	        data_id: x.data_id,
+	        severity: x.severity,
+	        row_preview: x.row_preview,
+	      }));
+	    const sampleColumns = (() => {
+	      const first = sampleRows[0]?.row_preview;
+	      if (!first) return [];
+	      try {
+	        return Object.keys(first).slice(0, 10);
+	      } catch {
+	        return [];
+	      }
+	    })();
 
 	    return {
 	      dataTypeKey: dt,
@@ -4507,10 +4760,62 @@ function moduleTitle(key: string) {
 	      issuePercentage: `${(Number(dtResult.issue_percentage ?? 0) * 100).toFixed(2)}%`,
 	      score: Number.isFinite(score) ? Number(score.toFixed(0)) : 0,
 	      extraMetrics,
+	      sampleRows,
+	      sampleColumns,
 	      issues: normalizedIssues,
 	    };
 	  });
 	});
+
+	type IssueKind = "anomaly" | "missing" | "duplicate" | "label_mismatch" | "other";
+	const ISSUE_COLORS: Record<IssueKind, string> = {
+	  anomaly: "#DC3545",
+	  missing: "#FFC107",
+	  duplicate: "#17A2B8",
+	  label_mismatch: "#6F42C1",
+	  other: "#909399",
+	};
+
+	function issueKindFromType(issueType: any): IssueKind {
+	  const t = String(issueType || "");
+	  if (t.includes("异常")) return "anomaly";
+	  if (t.includes("缺失")) return "missing";
+	  if (t.includes("重复")) return "duplicate";
+	  if (t.includes("错标")) return "label_mismatch";
+	  const lower = t.toLowerCase();
+	  if (lower.includes("label") && lower.includes("mismatch")) return "label_mismatch";
+	  return "other";
+	}
+
+	function issueTagStyle(issueType: any): Record<string, string> {
+	  const kind = issueKindFromType(issueType);
+	  const c = ISSUE_COLORS[kind];
+	  const bg =
+	    kind === "anomaly"
+	      ? "rgba(220, 53, 69, 0.08)"
+	      : kind === "missing"
+	      ? "rgba(255, 193, 7, 0.12)"
+	      : kind === "duplicate"
+	      ? "rgba(23, 162, 184, 0.08)"
+	      : kind === "label_mismatch"
+	      ? "rgba(111, 66, 193, 0.08)"
+	      : "rgba(144, 147, 153, 0.08)";
+	  const text = kind === "missing" ? "#6B4F00" : c;
+	  return { color: text, borderColor: c, backgroundColor: bg };
+	}
+
+	function issueRowClassName({ row }: { row: any }): string {
+	  const kind = issueKindFromType(row?.issue_type);
+	  return kind === "other" ? "" : `dqscan-issue dqscan-issue-${kind}`;
+	}
+
+	function severityTagType(sev: any): "info" | "success" | "warning" | "danger" {
+	  const s = String(sev || "").toLowerCase();
+	  if (s.includes("severe") || s.includes("high")) return "danger";
+	  if (s.includes("moderate") || s.includes("medium")) return "warning";
+	  if (s.includes("light") || s.includes("low")) return "info";
+	  return "info";
+	}
 
 	const activeScoringExplain = computed(() => {
 	  switch (activeReportModuleType.value) {
@@ -4840,5 +5145,30 @@ onBeforeUnmount(() => {
 
 .dqscan-module-tabs :deep(.dqscan-row-missing-executor td) {
   background-color: var(--el-color-danger-light-9);
+}
+
+.dqscan-issue-table :deep(.dqscan-issue-anomaly td) {
+  background-color: rgba(220, 53, 69, 0.06);
+}
+.dqscan-issue-table :deep(.dqscan-issue-missing td) {
+  background-color: rgba(255, 193, 7, 0.10);
+}
+.dqscan-issue-table :deep(.dqscan-issue-duplicate td) {
+  background-color: rgba(23, 162, 184, 0.06);
+}
+.dqscan-issue-table :deep(.dqscan-issue-label_mismatch td) {
+  background-color: rgba(111, 66, 193, 0.06);
+}
+.dqscan-issue-table :deep(.dqscan-issue-anomaly td:first-child) {
+  box-shadow: inset 4px 0 0 #DC3545;
+}
+.dqscan-issue-table :deep(.dqscan-issue-missing td:first-child) {
+  box-shadow: inset 4px 0 0 #FFC107;
+}
+.dqscan-issue-table :deep(.dqscan-issue-duplicate td:first-child) {
+  box-shadow: inset 4px 0 0 #17A2B8;
+}
+.dqscan-issue-table :deep(.dqscan-issue-label_mismatch td:first-child) {
+  box-shadow: inset 4px 0 0 #6F42C1;
 }
 </style>
