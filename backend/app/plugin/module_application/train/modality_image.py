@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 from typing import Tuple, Dict, Any
 from pathlib import Path
 
@@ -41,27 +41,34 @@ class ImageDatasetLoader(BaseDatasetLoader):
         val_transform = self.get_transforms(config, is_train=False)
 
         try:
-            # 尝试使用 ImageFolder 格式（分类任务）
-            full_dataset = datasets.ImageFolder(
-                root=dataset_path,
-                transform=train_transform
-            )
+            # 分别加载两份，各自携带独立的 transform，避免 random_split 后共享
+            # 底层 dataset 导致 val_dataset.dataset.transform 覆盖训练集 transform 的 bug
+            train_full = datasets.ImageFolder(root=dataset_path, transform=train_transform)
+            val_full   = datasets.ImageFolder(root=dataset_path, transform=val_transform)
 
-            # 划分训练集和验证集
-            total_size = len(full_dataset)
-            val_size = int(total_size * config.val_split)
+            # 自动修正 num_classes（防止配置值与数据集实际类别数不一致触发 CUDA assert）
+            actual_num_classes = len(train_full.classes)
+            if actual_num_classes != config.num_classes:
+                logger.warning(
+                    f"num_classes 配置值 {config.num_classes} 与数据集实际类别数 "
+                    f"{actual_num_classes} 不符，自动修正为 {actual_num_classes}"
+                )
+                config.num_classes = actual_num_classes
+
+            # 用相同随机种子生成分割索引，保证 train/val 不重叠
+            total_size = len(train_full)
+            val_size   = int(total_size * config.val_split)
             train_size = total_size - val_size
 
-            train_dataset, val_dataset = random_split(
-                full_dataset,
-                [train_size, val_size],
+            indices = torch.randperm(
+                total_size,
                 generator=torch.Generator().manual_seed(config.seed)
-            )
+            ).tolist()
 
-            # 为验证集设置不同的 transform
-            val_dataset.dataset.transform = val_transform
+            train_dataset = Subset(train_full, indices[:train_size])
+            val_dataset   = Subset(val_full,   indices[train_size:])
 
-            logger.info(f"数据集加载成功 - 训练集: {train_size}, 验证集: {val_size}")
+            logger.info(f"数据集加载成功 - 训练集: {train_size}, 验证集: {val_size}, 类别数: {actual_num_classes}")
 
         except Exception as e:
             logger.error(f"使用 ImageFolder 加载失败: {e}, 尝试使用 CIFAR10")
@@ -79,6 +86,10 @@ class ImageDatasetLoader(BaseDatasetLoader):
                 transform=val_transform
             )
             train_size = len(train_dataset)
+            # CIFAR10 固定 10 类，同步修正 num_classes
+            if config.num_classes != 10:
+                logger.warning(f"CIFAR10 固定 10 类，num_classes 从 {config.num_classes} 修正为 10")
+                config.num_classes = 10
 
         # 创建 DataLoader
         train_loader = DataLoader(
