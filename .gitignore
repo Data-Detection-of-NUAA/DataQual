@@ -83,6 +83,24 @@ static/dqscan/**
 
 # 本地对话与工作日志（不入库）
 prompt/codexlog.txt
+prompt/codexlog_*.txt
+
+# 会话规划临时文件（planning-with-files 插件产物）
+task_plan.md
+findings.md
+progress.md
+
+# autonomous agent 工作目录（临时）
+.autonomous/
+
+# prompt 目录下的临时产物
+prompt/*.pptx
+prompt/ppt-workspace/
+prompt/assets/
+prompt/generate_*.py
+prompt/label_mismatch_eval_results_*.json
+prompt/新会话交接总结.md
+prompt/concurrent-scribbling-catmull.md
 
 # Jupyter Notebook
 .ipynb_checkpoints

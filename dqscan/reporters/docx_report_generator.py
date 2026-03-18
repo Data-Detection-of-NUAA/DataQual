@@ -566,7 +566,15 @@ class DocxReportGenerator(BaseReporter):
         self._add_paragraph("")
 
     def _add_rate_progress_table(self, dt_results: dict[str, Any]) -> None:
-        table = self.doc.add_table(rows=4, cols=4)
+        rates = [
+            ("异常率", float(dt_results.get("anomaly_rate", 0) or 0), 0.05, 0.10),
+            ("缺失率", float(dt_results.get("missing_rate", 0) or 0), 0.01, 0.05),
+            ("重复率", float(dt_results.get("duplicate_rate", 0) or 0), 0.05, 0.15),
+        ]
+        if "label_mismatch_rate" in dt_results:
+            rates.append(("疑似错标率", float(dt_results.get("label_mismatch_rate", 0) or 0), 0.02, 0.05))
+
+        table = self.doc.add_table(rows=len(rates) + 1, cols=4)
         table.style = "Table Grid"
 
         headers = ["指标", "数值", "阈值", "状态"]
@@ -578,12 +586,6 @@ class DocxReportGenerator(BaseReporter):
                 for r in p.runs:
                     r.bold = True
                     r.font.size = Pt(9)
-
-        rates = [
-            ("异常率", float(dt_results.get("anomaly_rate", 0) or 0), 0.05, 0.10),
-            ("缺失率", float(dt_results.get("missing_rate", 0) or 0), 0.01, 0.05),
-            ("重复率", float(dt_results.get("duplicate_rate", 0) or 0), 0.05, 0.15),
-        ]
 
         for i, (name, rate, warn_thresh, danger_thresh) in enumerate(rates, 1):
             if rate <= warn_thresh:

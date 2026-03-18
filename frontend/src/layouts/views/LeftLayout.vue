@@ -7,9 +7,9 @@
     <div class="layout__sidebar">
       <div class="layout-sidebar">
         <!-- 侧栏标题 -->
-        <AppLogo v-if="isShowLogo" :collapse="!isSidebarOpen" />
+        <AppLogo :collapse="isLogoCollapsed" />
         <!-- 主菜单内容 -->
-        <el-scrollbar>
+        <el-scrollbar ref="sidebarScrollbarRef" wrap-class="sidebar-scroll-wrap">
           <BasicMenu :data="routes" base-path="" />
         </el-scrollbar>
 
@@ -25,32 +25,46 @@
                 <div class="sidebar-user__name">{{ userName }}</div>
                 <div class="sidebar-user__role">{{ userRole }}</div>
               </div>
-              <el-icon class="sidebar-user__arrow"><ArrowRight /></el-icon>
+              <el-icon class="sidebar-user__arrow">
+                <ArrowRight />
+              </el-icon>
             </div>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item @click="handleProfileClick">
-                  <el-icon><User /></el-icon>
+                  <el-icon>
+                    <User />
+                  </el-icon>
                   {{ t("navbar.profile") }}
                 </el-dropdown-item>
                 <el-dropdown-item @click="handleDocumentClick">
-                  <el-icon><Document /></el-icon>
+                  <el-icon>
+                    <Document />
+                  </el-icon>
                   {{ t("navbar.document") }}
                 </el-dropdown-item>
                 <el-dropdown-item @click="handleGiteeClick">
-                  <el-icon><Reading /></el-icon>
+                  <el-icon>
+                    <Reading />
+                  </el-icon>
                   {{ t("navbar.gitee") }}
                 </el-dropdown-item>
                 <el-dropdown-item @click="handleTourClick">
-                  <el-icon><Position /></el-icon>
+                  <el-icon>
+                    <Position />
+                  </el-icon>
                   {{ t("navbar.tour") }}
                 </el-dropdown-item>
                 <el-dropdown-item divided @click="handlelockScreen">
-                  <el-icon><Lock /></el-icon>
+                  <el-icon>
+                    <Lock />
+                  </el-icon>
                   {{ t("navbar.lock") }}
                 </el-dropdown-item>
                 <el-dropdown-item @click="logout">
-                  <el-icon><SwitchButton /></el-icon>
+                  <el-icon>
+                    <SwitchButton />
+                  </el-icon>
                   {{ t("navbar.logout") }}
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -60,14 +74,13 @@
       </div>
     </div>
 
+    <!-- 标签栏 -->
+    <TagsView v-if="isShowTagsView" class="layout__tagsview" />
+
     <!-- 主内容区 -->
-    <div
-      :class="{
-        hasTagsView: isShowTagsView,
-      }"
-      class="layout__main"
-    >
-      <TagsView v-if="isShowTagsView" />
+    <div :class="{
+      hasTagsView: isShowTagsView,
+    }" class="layout__main">
       <AppMain />
     </div>
 
@@ -118,12 +131,55 @@ const userStore = useUserStore();
 const lockStore = useLockStore();
 const settingStore = useSettingsStore();
 const appStore = useAppStore();
+const isLogoCollapsed = computed(() => !appStore.sidebar.opened);
 
 const userName = computed(() => userStore.basicInfo.name || "超级管理员");
 const userRole = computed(
   () => userStore.basicInfo.roles?.[0]?.name || userStore.basicInfo.description || "系统管理员"
 );
 const userAvatar = computed(() => userStore.basicInfo.avatar || "");
+
+const sidebarScrollbarRef = ref();
+let sidebarScrollTimer: ReturnType<typeof setTimeout> | null = null;
+let sidebarScrollRaf = 0;
+
+watch(
+  () => appStore.sidebar.opened,
+  () => {
+    const scrollbar = sidebarScrollbarRef.value;
+    const wrap = scrollbar?.wrapRef as HTMLElement | undefined;
+    const scrollTop = wrap ? wrap.scrollTop : 0;
+
+    if (sidebarScrollTimer) {
+      clearTimeout(sidebarScrollTimer);
+    }
+
+    sidebarScrollTimer = setTimeout(() => {
+      const nextWrap = scrollbar?.wrapRef as HTMLElement | undefined;
+      if (!nextWrap) return;
+
+      let frameCount = 0;
+      const restore = () => {
+        nextWrap.scrollTop = scrollTop;
+        frameCount += 1;
+        if (frameCount < 10) {
+          sidebarScrollRaf = requestAnimationFrame(restore);
+        }
+      };
+
+      sidebarScrollRaf = requestAnimationFrame(restore);
+    }, 320);
+  }
+);
+
+onUnmounted(() => {
+  if (sidebarScrollTimer) {
+    clearTimeout(sidebarScrollTimer);
+  }
+  if (sidebarScrollRaf) {
+    cancelAnimationFrame(sidebarScrollRaf);
+  }
+});
 
 const guideVisible = computed({
   get: () => appStore.guideVisible,
@@ -201,7 +257,8 @@ const { routes } = useLayoutMenu();
     z-index: 999;
     width: $sidebar-width;
     background-color: $menu-background;
-    transition: width 0.28s;
+    transition: transform 0.28s ease;
+    will-change: transform;
 
     .layout-sidebar {
       position: relative;
@@ -209,10 +266,20 @@ const { routes } = useLayoutMenu();
       flex-direction: column;
       height: 100%;
       background-color: var(--menu-background);
-      transition: width 0.28s;
+      transition: none;
 
       :deep(.el-scrollbar) {
         flex: 1;
+      }
+
+      :deep(.sidebar-scroll-wrap) {
+        overflow-anchor: none;
+      }
+
+      :deep(.el-scrollbar__view),
+      :deep(.el-scrollbar__wrap),
+      :deep(.el-menu) {
+        overflow-anchor: none;
       }
 
       :deep(.el-menu) {
@@ -229,6 +296,18 @@ const { routes } = useLayoutMenu();
     z-index: 1000;
     background-color: var(--el-bg-color);
     border-bottom: 1px solid var(--el-border-color-light);
+    transition: left 0.28s ease;
+  }
+
+  &__tagsview {
+    position: fixed;
+    top: $navbar-height;
+    right: 0;
+    left: $sidebar-width;
+    z-index: 999;
+    height: $tags-view-height;
+    overflow: visible;
+    transition: left 0.28s ease;
   }
 
   &__main {
@@ -237,7 +316,11 @@ const { routes } = useLayoutMenu();
     margin-left: $sidebar-width;
     margin-top: $navbar-height;
     overflow-y: auto;
-    transition: margin-left 0.28s;
+    transition: margin-left 0.28s ease;
+
+    &.hasTagsView {
+      margin-top: calc($navbar-height + $tags-view-height);
+    }
 
     .fixed-header {
       position: sticky;
@@ -321,11 +404,13 @@ const { routes } = useLayoutMenu();
   .layout__main {
     margin-left: 0 !important;
   }
-}
 
-.hasTagsView {
-  :deep(.app-main) {
-    height: calc(100vh - $navbar-height - $tags-view-height) !important;
+  .layout__topbar {
+    left: 0;
+  }
+
+  .layout__tagsview {
+    left: 0;
   }
 }
 </style>

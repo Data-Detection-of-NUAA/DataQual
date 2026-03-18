@@ -40,6 +40,12 @@ class DQScanAlgorithmOut(BaseModel):
     params_schema: dict[str, Any]
 
 
+class DQScanDefectsOut(BaseModel):
+    modality: str
+    engine: str
+    tree: list[dict[str, Any]]
+
+
 class DQScanCreateTaskIn(BaseModel):
     file_id: str
     baseline_file_id: str | None = Field(

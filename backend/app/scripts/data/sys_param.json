@@ -2,7 +2,7 @@
   {
     "config_name": "网站名称",
     "config_key": "sys_web_title",
-    "config_value": "FastApiAdmin",
+    "config_value": "高质量数据集质量测评系统",
     "config_type": true,
     "status": "0",
     "description": "初始化数据"
@@ -10,7 +10,7 @@
   {
     "config_name": "网站描述",
     "config_key": "sys_web_description",
-    "config_value": "FastApiAdmin 是完全开源的权限管理系统",
+    "config_value": "高质量数据集质量测评系统",
     "config_type": true,
     "status": "0",
     "description": "初始化数据"
