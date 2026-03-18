@@ -1,4 +1,3 @@
-from .tabular_dirty_scanner import TabularDirtyScanner
+from .tabular import TabularDirtyScanner, TabularLabelMismatchScanner
 
-__all__ = ["TabularDirtyScanner"]
-
+__all__ = ["TabularDirtyScanner", "TabularLabelMismatchScanner"]

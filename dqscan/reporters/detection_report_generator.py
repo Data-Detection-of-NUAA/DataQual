@@ -78,6 +78,10 @@ class DetectionReportGenerator(BaseReporter):
                 dt_summary["anomaly_rate"] = round(float(dt_results.get("anomaly_rate", 0) or 0), 4)
                 dt_summary["missing_rate"] = round(float(dt_results.get("missing_rate", 0) or 0), 4)
                 dt_summary["duplicate_rate"] = round(float(dt_results.get("duplicate_rate", 0) or 0), 4)
+                if "label_mismatch_rate" in dt_results:
+                    dt_summary["label_mismatch_rate"] = round(float(dt_results.get("label_mismatch_rate", 0) or 0), 4)
+                if "label_mismatch_count" in dt_results:
+                    dt_summary["label_mismatch_count"] = int(dt_results.get("label_mismatch_count", 0) or 0)
             elif module_type == "adversarial":
                 dt_summary["attack_success_rate"] = round(float(dt_results.get("attack_success_rate", 0) or 0), 4)
                 dt_summary["robustness_score"] = round(float(dt_results.get("robustness_score", 1.0) or 0), 4)

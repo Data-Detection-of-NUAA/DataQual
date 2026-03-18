@@ -1,0 +1,477 @@
+[
+  {
+    "k": 35,
+    "detected": 500,
+    "true_noisy": 35,
+    "tp": 35,
+    "fp": 465,
+    "fn": 0,
+    "precision_at_k": 0.07,
+    "recall_at_k": 1.0,
+    "f1": 0.1308,
+    "algorithm": "phash_outlier",
+    "algorithm_display": "phash_outlier",
+    "noise_fraction": 0.02,
+    "elapsed_seconds": 4.39,
+    "total_images": 1797,
+    "hash_size": 16,
+    "confusion_pairs_top_5": [
+      {
+        "given_label": "8",
+        "suggested_label": "6",
+        "count": 43
+      },
+      {
+        "given_label": "5",
+        "suggested_label": "9",
+        "count": 32
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "6",
+        "count": 29
+      },
+      {
+        "given_label": "9",
+        "suggested_label": "3",
+        "count": 22
+      },
+      {
+        "given_label": "0",
+        "suggested_label": "6",
+        "count": 22
+      }
+    ],
+    "per_class_issue_rate": {
+      "2": 0.2171,
+      "5": 0.35,
+      "8": 0.8,
+      "9": 0.2762,
+      "3": 0.162,
+      "0": 0.324,
+      "1": 0.5514,
+      "4": 0.2022,
+      "6": 0.0695,
+      "7": 0.0899
+    },
+    "total_detected_issues": 500,
+    "image_label_mismatch_rate": 0.2782,
+    "sample_issues": [
+      {
+        "image_path": "7/00173.png",
+        "given_label": "0",
+        "suggested_label": "7",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00203.png",
+        "given_label": "6",
+        "suggested_label": "9",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00220.png",
+        "given_label": "6",
+        "suggested_label": "9",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "3/00339.png",
+        "given_label": "8",
+        "suggested_label": "3",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "4/00366.png",
+        "given_label": "9",
+        "suggested_label": "4",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      }
+    ]
+  },
+  {
+    "k": 89,
+    "detected": 500,
+    "true_noisy": 89,
+    "tp": 85,
+    "fp": 415,
+    "fn": 4,
+    "precision_at_k": 0.17,
+    "recall_at_k": 0.9551,
+    "f1": 0.2886,
+    "algorithm": "phash_outlier",
+    "algorithm_display": "phash_outlier",
+    "noise_fraction": 0.05,
+    "elapsed_seconds": 4.48,
+    "total_images": 1797,
+    "hash_size": 16,
+    "confusion_pairs_top_5": [
+      {
+        "given_label": "8",
+        "suggested_label": "6",
+        "count": 40
+      },
+      {
+        "given_label": "5",
+        "suggested_label": "9",
+        "count": 32
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "6",
+        "count": 28
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "4",
+        "count": 21
+      },
+      {
+        "given_label": "8",
+        "suggested_label": "7",
+        "count": 20
+      }
+    ],
+    "per_class_issue_rate": {
+      "2": 0.2303,
+      "5": 0.3636,
+      "8": 0.7889,
+      "7": 0.1278,
+      "1": 0.5873,
+      "0": 0.3121,
+      "9": 0.2102,
+      "3": 0.2474,
+      "4": 0.2126,
+      "6": 0.0608
+    },
+    "total_detected_issues": 500,
+    "image_label_mismatch_rate": 0.2782,
+    "sample_issues": [
+      {
+        "image_path": "9/00029.png",
+        "given_label": "1",
+        "suggested_label": "9",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "7/00173.png",
+        "given_label": "3",
+        "suggested_label": "7",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00203.png",
+        "given_label": "6",
+        "suggested_label": "9",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00233.png",
+        "given_label": "4",
+        "suggested_label": "3",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "0/00305.png",
+        "given_label": "3",
+        "suggested_label": "0",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      }
+    ]
+  },
+  {
+    "k": 179,
+    "detected": 500,
+    "true_noisy": 179,
+    "tp": 170,
+    "fp": 330,
+    "fn": 9,
+    "precision_at_k": 0.34,
+    "recall_at_k": 0.9497,
+    "f1": 0.5007,
+    "algorithm": "phash_outlier",
+    "algorithm_display": "phash_outlier",
+    "noise_fraction": 0.1,
+    "elapsed_seconds": 4.53,
+    "total_images": 1797,
+    "hash_size": 16,
+    "confusion_pairs_top_5": [
+      {
+        "given_label": "8",
+        "suggested_label": "6",
+        "count": 40
+      },
+      {
+        "given_label": "5",
+        "suggested_label": "9",
+        "count": 34
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "6",
+        "count": 31
+      },
+      {
+        "given_label": "8",
+        "suggested_label": "7",
+        "count": 24
+      },
+      {
+        "given_label": "4",
+        "suggested_label": "7",
+        "count": 22
+      }
+    ],
+    "per_class_issue_rate": {
+      "5": 0.3678,
+      "8": 0.8226,
+      "9": 0.2781,
+      "1": 0.6082,
+      "0": 0.3506,
+      "2": 0.2471,
+      "3": 0.2737,
+      "4": 0.2955,
+      "6": 0.1257,
+      "7": 0.1695
+    },
+    "total_detected_issues": 500,
+    "image_label_mismatch_rate": 0.2782,
+    "sample_issues": [
+      {
+        "image_path": "6/00065.png",
+        "given_label": "3",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "4/00124.png",
+        "given_label": "2",
+        "suggested_label": "4",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "7/00173.png",
+        "given_label": "3",
+        "suggested_label": "7",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00233.png",
+        "given_label": "4",
+        "suggested_label": "3",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "0/00305.png",
+        "given_label": "3",
+        "suggested_label": "0",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      }
+    ]
+  },
+  {
+    "k": 269,
+    "detected": 500,
+    "true_noisy": 269,
+    "tp": 247,
+    "fp": 253,
+    "fn": 22,
+    "precision_at_k": 0.494,
+    "recall_at_k": 0.9182,
+    "f1": 0.6424,
+    "algorithm": "phash_outlier",
+    "algorithm_display": "phash_outlier",
+    "noise_fraction": 0.15,
+    "elapsed_seconds": 4.32,
+    "total_images": 1797,
+    "hash_size": 16,
+    "confusion_pairs_top_5": [
+      {
+        "given_label": "8",
+        "suggested_label": "6",
+        "count": 38
+      },
+      {
+        "given_label": "5",
+        "suggested_label": "9",
+        "count": 32
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "6",
+        "count": 29
+      },
+      {
+        "given_label": "4",
+        "suggested_label": "7",
+        "count": 25
+      },
+      {
+        "given_label": "8",
+        "suggested_label": "7",
+        "count": 25
+      }
+    ],
+    "per_class_issue_rate": {
+      "2": 0.3278,
+      "5": 0.435,
+      "8": 0.8192,
+      "9": 0.3198,
+      "6": 0.1838,
+      "1": 0.5918,
+      "3": 0.2781,
+      "4": 0.3314,
+      "7": 0.2045,
+      "0": 0.3596
+    },
+    "total_detected_issues": 500,
+    "image_label_mismatch_rate": 0.2782,
+    "sample_issues": [
+      {
+        "image_path": "6/00065.png",
+        "given_label": "8",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00073.png",
+        "given_label": "1",
+        "suggested_label": "9",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "9/00233.png",
+        "given_label": "1",
+        "suggested_label": "3",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "4/00297.png",
+        "given_label": "0",
+        "suggested_label": "4",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "6/00322.png",
+        "given_label": "7",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      }
+    ]
+  },
+  {
+    "k": 359,
+    "detected": 500,
+    "true_noisy": 359,
+    "tp": 318,
+    "fp": 182,
+    "fn": 41,
+    "precision_at_k": 0.636,
+    "recall_at_k": 0.8858,
+    "f1": 0.7404,
+    "algorithm": "phash_outlier",
+    "algorithm_display": "phash_outlier",
+    "noise_fraction": 0.2,
+    "elapsed_seconds": 8.36,
+    "total_images": 1797,
+    "hash_size": 16,
+    "confusion_pairs_top_5": [
+      {
+        "given_label": "8",
+        "suggested_label": "6",
+        "count": 44
+      },
+      {
+        "given_label": "0",
+        "suggested_label": "6",
+        "count": 35
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "6",
+        "count": 33
+      },
+      {
+        "given_label": "5",
+        "suggested_label": "9",
+        "count": 26
+      },
+      {
+        "given_label": "1",
+        "suggested_label": "4",
+        "count": 23
+      }
+    ],
+    "per_class_issue_rate": {
+      "2": 0.3466,
+      "5": 0.5275,
+      "8": 0.88,
+      "0": 0.5,
+      "7": 0.2827,
+      "3": 0.3438,
+      "6": 0.1279,
+      "9": 0.3933,
+      "1": 0.6869,
+      "4": 0.268
+    },
+    "total_detected_issues": 500,
+    "image_label_mismatch_rate": 0.2782,
+    "sample_issues": [
+      {
+        "image_path": "6/00065.png",
+        "given_label": "1",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "4/00124.png",
+        "given_label": "8",
+        "suggested_label": "4",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "6/00188.png",
+        "given_label": "9",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "6/00196.png",
+        "given_label": "1",
+        "suggested_label": "6",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      },
+      {
+        "image_path": "4/00239.png",
+        "given_label": "3",
+        "suggested_label": "4",
+        "confidence_score": 1.0,
+        "severity": "severe"
+      }
+    ]
+  }
+]
