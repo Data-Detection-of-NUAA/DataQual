@@ -17,7 +17,7 @@ from .service import AuditRegulationService
 
 RegulationRouter = APIRouter(
     route_class=OperationLogRoute,
-    prefix="/regulation",
+    prefix="/audit/regulation",
     tags=["审计法规库管理"],
 )
 

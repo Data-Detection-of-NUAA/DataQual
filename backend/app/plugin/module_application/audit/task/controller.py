@@ -1,5 +1,5 @@
-﻿"""
-瀹¤浠诲姟Controller
+"""
+审计任务Controller
 """
 from fastapi import APIRouter, Depends, Path, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
@@ -22,53 +22,53 @@ from .schema import (
 
 TaskRouter = APIRouter(
     route_class=OperationLogRoute,
-    prefix="/task",
-    tags=["瀹¤浠诲姟绠＄悊"]
+    prefix="/audit/task",
+    tags=["审计任务管理"]
 )
 
 
-@TaskRouter.post("/create", summary="鍒涘缓瀹¤浠诲姟")
+@TaskRouter.post("/create", summary="创建审计任务")
 async def create_task(
-    task_name: str = Form(..., description='浠诲姟鍚嶇О', max_length=200),
-    description: Optional[str] = Form(None, description='澶囨敞'),
+    task_name: str = Form(..., description='任务名称', max_length=200),
+    description: Optional[str] = Form(None, description='备注'),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:create"]))
 ) -> JSONResponse:
-    """鍒涘缓鏂扮殑瀹¤浠诲姟"""
+    """创建新的审计任务"""
     task_in = AuditTaskCreate(task_name=task_name, description=description)
     task = await AuditTaskService.create_service(obj_in=task_in, auth=auth)
-    return SuccessResponse(data=task, msg="浠诲姟鍒涘缓鎴愬姛")
+    return SuccessResponse(data=task, msg="任务创建成功")
 
 
-@TaskRouter.get("/list", summary="鑾峰彇浠诲姟鍒楄〃")
+@TaskRouter.get("/list", summary="获取任务列表")
 async def get_task_list(
     page: PaginationQueryParam = Depends(),
     params: AuditTaskQueryParam = Depends(),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:list"]))
 ) -> JSONResponse:
-    """鑾峰彇浠诲姟鍒楄〃锛堝垎椤碉級"""
+    """获取任务列表（分页）"""
     tasks, total = await AuditTaskService.list_service(params=params, auth=auth)
     result = await PaginationService.paginate(data_list=tasks, page_no=page.page_no, page_size=page.page_size)
     return SuccessResponse(data=result)
 
 
-@TaskRouter.get("/detail/{id}", summary="鑾峰彇浠诲姟璇︽儏")
+@TaskRouter.get("/detail/{id}", summary="获取任务详情")
 async def get_task_detail(
-    id: int = Path(..., description="浠诲姟ID"),
+    id: int = Path(..., description="任务ID"),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:detail"]))
 ) -> JSONResponse:
-    """鑾峰彇浠诲姟璇︽儏"""
+    """获取任务详情"""
     task = await AuditTaskService.detail_service(id=id, auth=auth)
     return SuccessResponse(data=task)
 
 
-@TaskRouter.delete("/delete", summary="鍒犻櫎瀹¤浠诲姟")
+@TaskRouter.delete("/delete", summary="删除审计任务")
 async def delete_task(
     batch_in: AuditTaskBatchDelete,
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:delete"]))
 ) -> JSONResponse:
-    """鍒犻櫎瀹¤浠诲姟"""
+    """删除审计任务"""
     await AuditTaskService.delete_service(ids=batch_in.ids, auth=auth)
-    return SuccessResponse(msg="鍒犻櫎鎴愬姛")
+    return SuccessResponse(msg="删除成功")
 
 
 @TaskRouter.post("/{id}/upload-regulation", summary="上传法规文件")
@@ -140,34 +140,34 @@ async def upload_dataset(
     return SuccessResponse(data=result, msg="数据集上传成功")
 
 
-@TaskRouter.post("/{id}/execute", summary="鎵ц瀹¤")
+@TaskRouter.post("/{id}/execute", summary="执行审计")
 async def execute_audit(
-    id: int = Path(..., description="浠诲姟ID"),
+    id: int = Path(..., description="任务ID"),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:execute"]))
 ) -> JSONResponse:
-    """姝ラ4: 鎵ц瀹¤"""
+    """步骤4: 执行审计"""
     result = await AuditTaskService.execute_audit_service(task_id=id, auth=auth)
-    return SuccessResponse(data=result, msg="瀹¤鎵ц瀹屾垚")
+    return SuccessResponse(data=result, msg="审计执行完成")
 
 
-@TaskRouter.get("/{id}/result", summary="鑾峰彇瀹¤缁撴灉")
+@TaskRouter.get("/{id}/result", summary="获取审计结果")
 async def get_audit_result(
-    id: int = Path(..., description="浠诲姟ID"),
+    id: int = Path(..., description="任务ID"),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:result"]))
 ) -> JSONResponse:
-    """鑾峰彇瀹¤缁撴灉"""
+    """获取审计结果"""
     result = await AuditTaskService.get_audit_result_service(task_id=id, auth=auth)
     return SuccessResponse(data=result)
 
 
-@TaskRouter.get("/{id}/errors", summary="鑾峰彇閿欒璇︽儏鍒楄〃")
+@TaskRouter.get("/{id}/errors", summary="获取错误详情列表")
 async def get_errors(
-    id: int = Path(..., description="浠诲姟ID"),
+    id: int = Path(..., description="任务ID"),
     page: PaginationQueryParam = Depends(),
-    error_type: str = Query(None, description="閿欒绫诲瀷锛歞ata/label"),
+    error_type: str = Query(None, description="错误类型：data/label"),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:errors"]))
 ) -> JSONResponse:
-    """鑾峰彇閿欒璇︽儏鍒楄〃锛堝垎椤碉級"""
+    """获取错误详情列表（分页）"""
     errors = await AuditTaskService.get_errors_service(
         task_id=id,
         error_type=error_type,
@@ -178,12 +178,12 @@ async def get_errors(
     return SuccessResponse(data=errors)
 
 
-@TaskRouter.get("/{id}/download-report", summary="涓嬭浇瀹¤鎶ュ憡")
+@TaskRouter.get("/{id}/download-report", summary="下载审计报告")
 async def download_report(
-    id: int = Path(..., description="浠诲姟ID"),
+    id: int = Path(..., description="任务ID"),
     auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:download"]))
 ):
-    """涓嬭浇瀹¤鎶ュ憡"""
+    """下载审计报告"""
     file_path = await AuditTaskService.download_report_service(task_id=id, auth=auth)
     return FileResponse(
         path=file_path,

@@ -14,7 +14,13 @@ class ReportGenerator:
     """报告生成器类"""
 
     @staticmethod
-    async def generate_report(task_id: int, audit_result: Dict[str, Any], rules: List) -> str:
+    async def generate_report(
+        task_id: int,
+        audit_result: Dict[str, Any],
+        rules: List,
+        gdpr_detection_results: List = None,
+        gdpr_report: Dict[str, Any] = None
+    ) -> str:
         """
         生成Excel格式的审计报告
 
@@ -22,6 +28,8 @@ class ReportGenerator:
             task_id: 任务ID
             audit_result: 审计结果
             rules: 使用的规则列表
+            gdpr_detection_results: GDPR检测结果列表
+            gdpr_report: GDPR检测报告
 
         Returns:
             报告文件路径
@@ -29,24 +37,17 @@ class ReportGenerator:
         # 创建工作簿
         wb = openpyxl.Workbook()
 
-        # 创建概览表
-        ws_summary = wb.active
-        ws_summary.title = "审计概览"
-        ReportGenerator._create_summary_sheet(ws_summary, task_id, audit_result, rules)
-
-        # 创建数据错误表
-        ws_data_errors = wb.create_sheet("数据错误")
-        data_errors = [e for e in audit_result['errors'] if e['error_type'] == 'data']
-        ReportGenerator._create_error_sheet(ws_data_errors, data_errors)
-
-        # 创建标签错误表
-        ws_label_errors = wb.create_sheet("标签错误")
-        label_errors = [e for e in audit_result['errors'] if e['error_type'] == 'label']
-        ReportGenerator._create_error_sheet(ws_label_errors, label_errors)
-
-        # 创建规则证据表
-        ws_rule_evidence = wb.create_sheet("规则证据")
-        ReportGenerator._create_rule_evidence_sheet(ws_rule_evidence, audit_result.get('rule_statistics', []))
+        # 只创建GDPR检测表
+        ws_gdpr = wb.active
+        ws_gdpr.title = "GDPR检测"
+        if gdpr_detection_results:
+            ReportGenerator._create_gdpr_sheet(ws_gdpr, gdpr_detection_results, gdpr_report, task_id)
+        else:
+            # 如果没有检测结果，显示提示信息
+            ws_gdpr['A1'] = 'GDPR检测'
+            ws_gdpr['A1'].font = Font(name='微软雅黑', size=14, bold=True)
+            ws_gdpr['A3'] = '未检测到GDPR敏感数据'
+            ws_gdpr['A3'].font = Font(name='微软雅黑', size=11, italic=True)
 
         # 保存文件
         today = datetime.now()
@@ -66,7 +67,7 @@ class ReportGenerator:
         return file_path
 
     @staticmethod
-    def _create_summary_sheet(ws, task_id: int, audit_result: Dict[str, Any], rules: List):
+    def _create_summary_sheet(ws, task_id: int, audit_result: Dict[str, Any], rules: List, gdpr_report: Dict[str, Any] = None):
         """创建概览表"""
         # 标题样式
         title_font = Font(name='微软雅黑', size=16, bold=True)
@@ -100,9 +101,25 @@ class ReportGenerator:
         ws[f'A{row}'] = '错误率:'
         ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
         ws[f'B{row}'] = f"{error_rate:.2f}%"
+        row += 1
+
+        # 添加GDPR合规分数（新增）
+        if gdpr_report:
+            ws[f'A{row}'] = 'GDPR合规分数:'
+            ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
+            score = gdpr_report.get('compliance_score', 0)
+            ws[f'B{row}'] = f"{score:.1f}/100"
+            # 根据分数设置颜色
+            if score >= 80:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='00B050')  # 绿色
+            elif score >= 60:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='FFC000')  # 橙色
+            else:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='FF0000')  # 红色
+            row += 1
 
         # 添加使用的规则
-        row += 2
+        row += 1
         ws[f'A{row}'] = '使用的审计规则'
         ws[f'A{row}'].font = header_font
         ws[f'A{row}'].fill = header_fill
@@ -187,6 +204,119 @@ class ReportGenerator:
         # 设置行高
         for row in range(2, len(errors) + 2):
             ws.row_dimensions[row].height = 30
+
+    @staticmethod
+    def _create_gdpr_sheet(ws, gdpr_detection_results: List, gdpr_report: Dict[str, Any], task_id: int = None):
+        """创建GDPR检测表"""
+        # 样式定义
+        title_font = Font(name='微软雅黑', size=14, bold=True)
+        header_font = Font(name='微软雅黑', bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_alignment = Alignment(horizontal='center', vertical='center')
+
+        # 添加标题
+        ws['A1'] = 'GDPR智能检测报告'
+        ws['A1'].font = title_font
+        ws.merge_cells('A1:F1')
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+
+        # 添加任务信息和审计时间
+        row = 2
+        if task_id:
+            ws[f'A{row}'] = f'任务ID: {task_id}'
+            ws[f'A{row}'].font = Font(name='微软雅黑', size=10, italic=True)
+        ws[f'D{row}'] = f'审计时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        ws[f'D{row}'].font = Font(name='微软雅黑', size=10, italic=True)
+
+        # 添加合规摘要
+        row = 4
+        if gdpr_report:
+            summary = gdpr_report.get('summary', {})
+            ws[f'A{row}'] = '合规分数:'
+            ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
+            score = gdpr_report.get('compliance_score', 0)
+            ws[f'B{row}'] = f"{score:.1f}/100"
+            if score >= 80:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='00B050')
+            elif score >= 60:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='FFC000')
+            else:
+                ws[f'B{row}'].font = Font(name='微软雅黑', bold=True, color='FF0000')
+            row += 1
+
+            ws[f'A{row}'] = '检测项总数:'
+            ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
+            ws[f'B{row}'] = summary.get('total_detections', 0)
+            row += 1
+
+            ws[f'A{row}'] = '唯一数据类型:'
+            ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
+            ws[f'B{row}'] = summary.get('unique_types', 0)
+            row += 1
+
+            # 风险分布
+            risk_breakdown = summary.get('detection_by_risk', {})
+            ws[f'A{row}'] = '风险分布:'
+            ws[f'A{row}'].font = Font(name='微软雅黑', bold=True)
+            row += 1
+            for risk_level, count in risk_breakdown.items():
+                ws[f'B{row}'] = f"  {risk_level}: {count}项"
+                row += 1
+
+        # 添加检测详情表头
+        row += 1
+        ws[f'A{row}'] = 'GDPR检测详情'
+        ws[f'A{row}'].font = header_font
+        ws[f'A{row}'].fill = header_fill
+        ws[f'A{row}'].alignment = header_alignment
+        ws.merge_cells(f'A{row}:F{row}')
+
+        row += 1
+        headers = ['数据类型', '匹配值', '位置', '风险等级', '置信度', '建议']
+        for col, header in enumerate(headers, start=1):
+            cell = ws.cell(row=row, column=col)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+
+        # 添加检测数据
+        for detection in gdpr_detection_results:
+            row += 1
+            ws[f'A{row}'] = detection.detection_type.value
+            ws[f'B{row}'] = detection.matched_value[:50] if detection.matched_value else ''  # 限制长度
+            ws[f'C{row}'] = detection.location[:30] if detection.location else ''
+            ws[f'D{row}'] = detection.risk_level.value
+            ws[f'E{row}'] = f"{detection.confidence:.2f}"
+            ws[f'F{row}'] = detection.recommendation[:100] if detection.recommendation else ''
+
+            # 根据风险等级设置颜色
+            risk_level = detection.risk_level.value
+            if risk_level == '严重':
+                fill_color = 'FFC7CE'  # 红色
+            elif risk_level == '高':
+                fill_color = 'FFD9B3'  # 橙色
+            elif risk_level == '中':
+                fill_color = 'FFEB9C'  # 黄色
+            else:
+                fill_color = 'C6EFCE'  # 绿色
+
+            for col in range(1, 7):
+                cell = ws.cell(row=row, column=col)
+                cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type='solid')
+                cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+        # 设置列宽
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 30
+        ws.column_dimensions['C'].width = 25
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 10
+        ws.column_dimensions['F'].width = 40
+
+        # 设置行高
+        for r in range(row - len(gdpr_detection_results) + 1, row + 1):
+            ws.row_dimensions[r].height = 30
 
     @staticmethod
     def _create_rule_evidence_sheet(ws, rule_statistics: List[Dict[str, Any]]):

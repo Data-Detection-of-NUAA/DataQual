@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="step-panel">
     <el-alert
-      title="请上传与 GDPR 相关的法规文件，支持 txt/pdf/docx/json/xml 格式"
+      title="请上传与 GDPR 相关的法规文件，支持 30+ 种文件格式（TXT/PDF/DOC/JSON/XML/HTML/ZIP等）"
       type="info"
       :closable="false"
       show-icon
@@ -47,7 +47,7 @@
           drag
           :auto-upload="false"
           :limit="1"
-          accept=".txt,.pdf,.docx,.json,.xml"
+          accept=".txt,.pdf,.doc,.docx,.json,.xml,.html,.htm,.md,.rtf,.csv,.xlsx,.zip,.rar,.7z"
           :on-change="handleFileChange"
         >
           <el-icon class="el-icon--upload">
@@ -57,7 +57,7 @@
             将文件拖到此处，或<span class="primary">点击上传</span>
           </div>
           <template #tip>
-            <div class="el-upload__tip">一次仅支持上传一个法规文件</div>
+            <div class="el-upload__tip">支持文档（PDF/DOC）、网页（HTML）、压缩包（ZIP）等多种格式</div>
           </template>
         </el-upload>
         <div class="action-area">

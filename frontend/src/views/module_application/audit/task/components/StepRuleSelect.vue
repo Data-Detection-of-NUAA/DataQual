@@ -28,14 +28,26 @@
     >
       <template #default="{ option }">
         <div class="rule-option">
-          <span>{{ option.label }}</span>
-          <el-tag
-            v-if="option.ai_matched"
-            size="small"
-            type="success"
-            effect="plain"
-            >AI推荐</el-tag
-          >
+          <div class="rule-main">
+            <span>{{ option.label }}</span>
+            <el-tag
+              v-if="option.ai_matched"
+              size="small"
+              type="success"
+              effect="plain"
+              >AI推荐</el-tag
+            >
+          </div>
+          <div v-if="option.match_reason || option.regulation_ref" class="rule-detail">
+            <div v-if="option.match_reason" class="match-reason">
+              <el-icon><InfoFilled /></el-icon>
+              <span>{{ option.match_reason }}</span>
+            </div>
+            <div v-if="option.regulation_ref" class="regulation-ref">
+              <el-icon><Document /></el-icon>
+              <span>{{ option.regulation_ref }}</span>
+            </div>
+          </div>
         </div>
       </template>
     </el-transfer>
@@ -51,6 +63,7 @@
 import { computed, ref, watch } from "vue";
 import type { PropType } from "vue";
 import type { MatchedRuleSummary } from "@/api/module_application/audit/task";
+import { InfoFilled, Document } from "@element-plus/icons-vue";
 
 const props = defineProps({
   matching: { type: Boolean, default: false },
@@ -94,6 +107,8 @@ const transferData = computed(() =>
     id: rule.id,
     label: `${rule.rule_name} (${rule.rule_code})`,
     ai_matched: props.matchedRuleIds.includes(rule.id),
+    match_reason: rule.match_reason || '',
+    regulation_ref: rule.regulation_ref || '',
   }))
 );
 </script>
@@ -116,9 +131,37 @@ const transferData = computed(() =>
 
 .rule-option {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.rule-main {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
+}
+
+.rule-detail {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--el-color-success-light-5);
+}
+
+.match-reason,
+.regulation-ref {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.match-reason .el-icon,
+.regulation-ref .el-icon {
+  font-size: 14px;
 }
 
 .rule-transfer {

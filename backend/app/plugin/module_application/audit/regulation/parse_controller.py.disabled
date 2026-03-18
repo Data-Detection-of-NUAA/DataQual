@@ -1,0 +1,289 @@
+"""
+法规解析和规则生成 Controller
+提供AI法规解析和规则自动生成功能
+"""
+from fastapi import APIRouter, Depends, Path, Body
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.common.response import SuccessResponse, ErrorResponse
+from app.core.router_class import OperationLogRoute
+from app.core.dependencies import AuthPermission, db_getter
+from app.api.v1.module_system.auth.schema import AuthSchema
+
+from app.plugin.module_application.audit.rule_template.schema import (
+    RegulationParseRequest,
+    RuleBatchGenerateRequest
+)
+from app.plugin.module_application.audit.regulation import service as regulation_service
+from app.plugin.module_application.audit.rule_template import service as template_service
+from app.plugin.module_application.audit.rule import service as rule_service
+from app.plugin.module_application.audit.engine.regulation_parser import RegulationParser
+from app.plugin.module_application.audit.engine.rule_instantiator import RuleInstantiator
+from app.plugin.module_application.audit.engine.content_extractor import ContentExtractor
+
+RegulationParseRouter = APIRouter(
+    route_class=OperationLogRoute,
+    prefix="/audit/regulation",
+    tags=["法规解析与规则生成"],
+)
+
+
+@RegulationParseRouter.post("/{regulation_id}/parse", summary="解析法规并提取审计要求")
+async def parse_regulation(
+    regulation_id: int = Path(..., description="法规ID"),
+    parse_request: RegulationParseRequest = Body(None, description="解析配置"),
+    db: AsyncSession = Depends(db_getter),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:parse"])),
+):
+    """
+    使用AI解析法规文件，提取审计要求并匹配规则模板
+
+    支持两种模式：
+    1. auto - 自动解析法规文本（使用AI）
+    2. manual - 用户提供结构化输入
+    """
+    try:
+        # 获取法规详情
+        regulation = await regulation_service.AuditRegulationService.detail_service(
+            regulation_id, auth
+        )
+        if not regulation:
+            return ErrorResponse(message="法规不存在")
+
+        # 获取所有可用的规则模板
+        templates = await template_service.all_active_service(db)
+        if not templates:
+            return ErrorResponse(message="没有可用的规则模板，请先创建模板")
+
+        # 根据解析模式处理
+        parse_mode = parse_request.parse_mode if parse_request else 'auto'
+
+        if parse_mode == 'manual' and parse_request and parse_request.structured_input:
+            # 手动结构化输入模式
+            requirements = await RegulationParser.parse_structured_regulation(
+                regulation_dict=parse_request.structured_input,
+                available_templates=templates
+            )
+        else:
+            # 自动解析模式 - 需要提取法规文件内容
+            file_path = regulation.file_path
+
+            # 使用ContentExtractor提取文件内容
+            extracted = ContentExtractor.extract_file(file_path)
+            if extracted.status != "success":
+                return ErrorResponse(message=f"法规文件提取失败: {', '.join(extracted.errors)}")
+
+            regulation_content = extracted.text or ""
+            if not regulation_content:
+                return ErrorResponse(message="法规文件内容为空，无法解析")
+
+            # 使用AI解析法规
+            requirements = await RegulationParser.parse_regulation(
+                regulation_content=regulation_content,
+                available_templates=templates
+            )
+
+        return SuccessResponse(
+            data={
+                "success": True,
+                "requirements_count": len(requirements),
+                "requirements": requirements,
+                "regulation_id": regulation_id,
+                "regulation_name": regulation.regulation_name
+            },
+            message=f"解析成功，提取到 {len(requirements)} 个审计要求"
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ErrorResponse(message=f"解析失败: {str(e)}")
+
+
+@RegulationParseRouter.post("/{regulation_id}/generate-rules", summary="根据解析结果生成规则")
+async def generate_rules_from_regulation(
+    regulation_id: int = Path(..., description="法规ID"),
+    generate_request: RuleBatchGenerateRequest = Body(..., description="生成配置"),
+    db: AsyncSession = Depends(db_getter),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:generate_rules"])),
+):
+    """
+    根据法规解析结果批量生成审计规则
+    """
+    try:
+        # 验证法规存在
+        regulation = await regulation_service.AuditRegulationService.detail_service(
+            regulation_id, auth
+        )
+        if not regulation:
+            return ErrorResponse(message="法规不存在")
+
+        # 获取所有模板
+        templates = await template_service.all_active_service(db)
+        templates_map = {t.id: t for t in templates}
+
+        # 批量实例化规则
+        rules_data = RuleInstantiator.batch_instantiate_rules(
+            parsed_requirements=generate_request.parsed_requirements,
+            templates_map=templates_map,
+            regulation_id=regulation_id
+        )
+
+        if not rules_data:
+            return ErrorResponse(message="没有可生成的规则")
+
+        # 批量创建规则
+        from app.plugin.module_application.audit.rule.model import AuditRule
+
+        created_rules = []
+        failed_count = 0
+        errors = []
+
+        for rule_data in rules_data:
+            try:
+                # 检查规则编码是否已存在
+                from app.plugin.module_application.audit.rule import crud as rule_crud
+                existing = await rule_crud.get_rule_by_code(db, rule_data['rule_code'])
+
+                if existing:
+                    # 规则已存在，可以选择跳过或更新
+                    errors.append(f"规则 {rule_data['rule_code']} 已存在，跳过")
+                    failed_count += 1
+                    continue
+
+                # 创建规则
+                rule = AuditRule(**rule_data)
+                db.add(rule)
+                await db.flush()  # flush但不commit，以便获取ID
+                created_rules.append(rule.id)
+
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"创建规则 {rule_data.get('rule_code', 'unknown')} 失败: {str(e)}")
+                continue
+
+        # 提交所有成功的规则
+        if created_rules:
+            await db.commit()
+
+        return SuccessResponse(
+            data={
+                "success": True,
+                "generated_count": len(created_rules),
+                "failed_count": failed_count,
+                "rule_ids": created_rules,
+                "errors": errors
+            },
+            message=f"成功生成 {len(created_rules)} 个规则" + (f"，{failed_count} 个失败" if failed_count > 0 else "")
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ErrorResponse(message=f"生成规则失败: {str(e)}")
+
+
+@RegulationParseRouter.post("/{regulation_id}/parse-and-generate", summary="一键解析并生成规则")
+async def parse_and_generate_rules(
+    regulation_id: int = Path(..., description="法规ID"),
+    parse_request: RegulationParseRequest = Body(None, description="解析配置"),
+    db: AsyncSession = Depends(db_getter),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:regulation:parse"])),
+):
+    """
+    一键操作：解析法规 + 生成规则
+    """
+    try:
+        # 步骤1: 解析法规
+        # 获取法规详情
+        regulation = await regulation_service.AuditRegulationService.detail_service(
+            regulation_id, auth
+        )
+        if not regulation:
+            return ErrorResponse(message="法规不存在")
+
+        # 获取所有可用的规则模板
+        templates = await template_service.all_active_service(db)
+        if not templates:
+            return ErrorResponse(message="没有可用的规则模板")
+
+        # 根据解析模式处理
+        parse_mode = parse_request.parse_mode if parse_request else 'auto'
+
+        if parse_mode == 'manual' and parse_request and parse_request.structured_input:
+            requirements = await RegulationParser.parse_structured_regulation(
+                regulation_dict=parse_request.structured_input,
+                available_templates=templates
+            )
+        else:
+            # 提取并解析法规内容
+            file_path = regulation.file_path
+            extracted = ContentExtractor.extract_file(file_path)
+            if extracted.status != "success":
+                return ErrorResponse(message=f"法规文件提取失败: {', '.join(extracted.errors)}")
+
+            regulation_content = extracted.text or ""
+            if not regulation_content:
+                return ErrorResponse(message="法规文件内容为空")
+
+            requirements = await RegulationParser.parse_regulation(
+                regulation_content=regulation_content,
+                available_templates=templates
+            )
+
+        if not requirements:
+            return ErrorResponse(message="未能从法规中提取到审计要求")
+
+        # 步骤2: 生成规则
+        templates_map = {t.id: t for t in templates}
+        rules_data = RuleInstantiator.batch_instantiate_rules(
+            parsed_requirements=requirements,
+            templates_map=templates_map,
+            regulation_id=regulation_id
+        )
+
+        # 批量创建规则
+        from app.plugin.module_application.audit.rule.model import AuditRule
+        from app.plugin.module_application.audit.rule import crud as rule_crud
+
+        created_rules = []
+        skipped_count = 0
+        errors = []
+
+        for rule_data in rules_data:
+            try:
+                # 检查是否已存在
+                existing = await rule_crud.get_rule_by_code(db, rule_data['rule_code'])
+                if existing:
+                    skipped_count += 1
+                    continue
+
+                rule = AuditRule(**rule_data)
+                db.add(rule)
+                await db.flush()
+                created_rules.append(rule.id)
+
+            except Exception as e:
+                errors.append(f"创建规则失败: {str(e)}")
+                continue
+
+        if created_rules:
+            await db.commit()
+
+        return SuccessResponse(
+            data={
+                "success": True,
+                "requirements_count": len(requirements),
+                "generated_count": len(created_rules),
+                "skipped_count": skipped_count,
+                "rule_ids": created_rules,
+                "requirements": requirements,
+                "errors": errors
+            },
+            message=f"成功解析 {len(requirements)} 个要求，生成 {len(created_rules)} 个规则"
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ErrorResponse(message=f"操作失败: {str(e)}")

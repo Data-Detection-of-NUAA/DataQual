@@ -22,7 +22,7 @@ from .schema import (
 
 RuleRouter = APIRouter(
     route_class=OperationLogRoute,
-    prefix="/rule",
+    prefix="/audit/rule",
     tags=["审计规则管理"]
 )
 

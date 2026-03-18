@@ -18,6 +18,8 @@ from ..engine.file_parser import FileParser
 from ..engine.ai_matcher import AIMatcher
 from ..engine.audit_engine import AuditEngine
 from ..engine.report_generator import ReportGenerator
+from ..engine.content_extractor import ContentExtractor  # 新增：智能抽取器
+from ..engine.content_detector import ContentDetector, GDPRDetectionReport  # 新增：GDPR检测器
 from ..file import save_upload_file
 from ..regulation.service import AuditRegulationService
 
@@ -201,18 +203,46 @@ class AuditTaskService:
         if not task or not task.regulation_file_path:
             raise CustomException(msg="Please upload a regulation file first", code=400)
 
-        regulation_content = FileParser.parse_file(
-            task.regulation_file_path,
-            task.regulation_file_type,
-        )
+        # 使用新的智能抽取器（支持30+种格式）
+        try:
+            extracted_content = ContentExtractor.extract(
+                task.regulation_file_path,
+                task.regulation_file_type
+            )
+
+            # 获取文本内容用于AI匹配
+            regulation_content = extracted_content.text or ""
+
+            # 如果抽取失败，降级到旧的解析器
+            if not regulation_content and extracted_content.status != "success":
+                print(f"智能抽取失败，降级到旧解析器: {extracted_content.errors}")
+                regulation_content = FileParser.parse_file(
+                    task.regulation_file_path,
+                    task.regulation_file_type,
+                )
+        except Exception as e:
+            # 降级策略：使用旧的解析器
+            print(f"智能抽取异常，降级到旧解析器: {str(e)}")
+            regulation_content = FileParser.parse_file(
+                task.regulation_file_path,
+                task.regulation_file_type,
+            )
+
         all_rules = await AuditRuleCRUD(auth).list(search={"is_active": 1})
-        matched_rule_ids = await AIMatcher.match_rules(regulation_content, all_rules)
+        match_result = await AIMatcher.match_rules(regulation_content, all_rules)
+
+        # 兼容新旧格式
+        matched_rule_ids = match_result.get("rule_ids", match_result) if isinstance(match_result, dict) else match_result
+        match_details = match_result.get("matches", []) if isinstance(match_result, dict) else []
+
+        # 创建匹配详情映射
+        match_details_map = {m["rule_id"]: m for m in match_details}
 
         await AuditTaskCRUD(auth).update(
             id=task_id,
             data=AuditTaskUpdate(
                 task_status="rules_matched",
-                matched_rules={"rule_ids": matched_rule_ids},
+                matched_rules={"rule_ids": matched_rule_ids, "matches": match_details},
             ),
         )
 
@@ -229,6 +259,9 @@ class AuditTaskService:
                     "rule_description": rule.rule_description,
                     "severity": rule.severity,
                     "ai_matched": True,
+                    # 添加匹配详情
+                    "match_reason": match_details_map.get(rule.id, {}).get("reason", ""),
+                    "regulation_ref": match_details_map.get(rule.id, {}).get("regulation_ref", ""),
                 }
                 for rule in matched_rules
             ],
@@ -316,13 +349,82 @@ class AuditTaskService:
                 if rule:
                     selected_rules.append(rule)
 
-            dataset_records = FileParser.parse_file(
+            # ==================== 阶段1: 智能文件抽取 ====================
+            print(f"[审计] 开始智能抽取数据集: {task.dataset_file_path}")
+            extracted_content = ContentExtractor.extract(
                 task.dataset_file_path,
-                task.dataset_file_type,
+                task.dataset_file_type
             )
 
-            audit_result = AuditEngine.audit_dataset(dataset_records, selected_rules)
+            # 检查抽取状态
+            if extracted_content.status == "failed":
+                raise CustomException(
+                    msg=f"文件抽取失败: {', '.join(extracted_content.errors or ['未知错误'])}",
+                    code=400
+                )
 
+            # 打印抽取信息
+            print(f"[审计] 抽取完成 - 状态: {extracted_content.status}")
+            if extracted_content.text:
+                print(f"[审计] - 文本内容: {len(extracted_content.text)} 字符")
+            if extracted_content.structured:
+                print(f"[审计] - 结构化字段: {len(extracted_content.structured)} 个")
+            if extracted_content.warnings:
+                print(f"[审计] - 警告: {len(extracted_content.warnings)} 条")
+
+            # ==================== 阶段2: 规则验证（保留原有逻辑） ====================
+            # 尝试获取结构化数据用于规则验证
+            dataset_records = None
+            if extracted_content.structured and isinstance(extracted_content.structured, dict):
+                # 如果是CSV/Excel等结构化数据，转换为记录列表
+                try:
+                    # 尝试使用旧的解析器获取记录格式
+                    dataset_records = FileParser.parse_file(
+                        task.dataset_file_path,
+                        task.dataset_file_type,
+                    )
+                except Exception as e:
+                    print(f"[审计] 旧解析器失败，跳过规则验证: {str(e)}")
+                    dataset_records = []
+
+            # 执行规则验证（如果有数据）
+            audit_result = {"total_records": 0, "error_records": 0, "errors": [], "rule_statistics": []}
+            if dataset_records:
+                print(f"[审计] 开始规则验证: {len(dataset_records)} 条记录")
+                audit_result = AuditEngine.audit_dataset(dataset_records, selected_rules)
+                print(f"[审计] 规则验证完成 - 发现 {len(audit_result['errors'])} 个错误")
+
+            # ==================== 阶段3: GDPR智能检测（新增） ====================
+            print(f"[审计] 开始GDPR智能检测...")
+            gdpr_detection_results = ContentDetector.detect(extracted_content.to_dict())
+            print(f"[审计] GDPR检测完成 - 发现 {len(gdpr_detection_results)} 项")
+
+            # 生成GDPR报告
+            gdpr_report = GDPRDetectionReport.generate_report(
+                gdpr_detection_results,
+                extracted_content.to_dict()
+            )
+            print(f"[审计] 合规分数: {gdpr_report['compliance_score']:.1f}/100")
+
+            # ==================== 阶段4: 合并结果并保存 ====================
+            # 将GDPR检测结果转换为错误记录格式
+            for detection in gdpr_detection_results:
+                error_dict = {
+                    "task_id": task_id,
+                    "error_type": "gdpr",  # 新类型：GDPR检测
+                    "row_number": None,  # GDPR检测可能没有行号
+                    "column_name": detection.location,  # 使用location作为列名
+                    "field_name": detection.detection_type.value,
+                    "original_value": detection.matched_value[:200] if detection.matched_value else None,  # 限制长度
+                    "error_message": f"[{detection.risk_level.value}] {detection.detection_type.value}: {detection.recommendation}",
+                    "rule_id": None,  # GDPR检测不关联规则
+                    "severity": detection.risk_level.value,
+                    "start_position": None,
+                    "end_position": None,
+                }
+                auth.db.add(AuditError(**error_dict))
+
+            # 保存原有规则验证的错误
             for error in audit_result["errors"]:
                 error_dict = {
                     "task_id": task_id,
@@ -339,18 +441,47 @@ class AuditTaskService:
                 }
                 auth.db.add(AuditError(**error_dict))
 
+            # 生成报告
             report_path = await ReportGenerator.generate_report(
                 task_id,
                 audit_result,
                 selected_rules,
+                gdpr_detection_results,
+                gdpr_report,
             )
+
+            # 计算总错误数（规则验证 + GDPR检测）
+            total_errors = len(audit_result["errors"]) + len(gdpr_detection_results)
+
+            # 计算总记录数（优先使用规则验证结果，否则从抽取内容推断）
+            total_records = audit_result.get("total_records", 0)
+            if total_records == 0 and extracted_content.structured:
+                # 对于结构化数据（如CSV），统计唯一行数
+                row_keys = set()
+                for key in extracted_content.structured.keys():
+                    if '.' in key:
+                        # 格式: "row.0.field_name" -> 提取行号
+                        parts = key.split('.')
+                        if len(parts) >= 2 and parts[0] == 'row':
+                            row_keys.add(parts[1])
+                total_records = len(row_keys) if row_keys else 1
+            elif total_records == 0 and extracted_content.text:
+                # 对于非结构化数据（如HTML、TXT），视为1个文档
+                total_records = 1
+
+            # 计算错误记录数（规则验证错误 + GDPR检测）
+            # 注意：GDPR检测的每一项都算作一个错误
+            error_records = audit_result.get("error_records", 0)
+            if error_records == 0 and len(gdpr_detection_results) > 0:
+                # 如果规则验证没有运行，使用GDPR检测数量
+                error_records = len(gdpr_detection_results)
 
             await AuditTaskCRUD(auth).update(
                 id=task_id,
                 data=AuditTaskUpdate(
                     task_status="completed",
-                    total_records=audit_result["total_records"],
-                    error_records=audit_result["error_records"],
+                    total_records=total_records,
+                    error_records=error_records,
                     audit_report_path=report_path,
                 ),
             )
@@ -359,9 +490,17 @@ class AuditTaskService:
 
             return {
                 "status": "completed",
-                "total_records": audit_result["total_records"],
-                "error_records": audit_result["error_records"],
+                "total_records": total_records,
+                "error_records": error_records,
                 "rule_statistics": audit_result.get("rule_statistics", []),
+                # 新增：GDPR检测结果摘要
+                "gdpr_summary": {
+                    "total_detections": len(gdpr_detection_results),
+                    "compliance_score": gdpr_report["compliance_score"],
+                    "risk_breakdown": gdpr_report["summary"]["detection_by_risk"],
+                    "recommendations": gdpr_report["recommendations"][:3],  # 前3条建议
+                },
+                "extraction_warnings": extracted_content.warnings or [],
             }
 
         except Exception as exc:  # pylint: disable=broad-except

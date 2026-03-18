@@ -266,32 +266,73 @@ class AuditEngine:
         context: Dict[str, Any],
         rule_config: Optional[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """???????"""
+        """验证自定义规则"""
         errors: List[Dict[str, Any]] = []
         config = rule_config or {}
-        custom_type = config.get('custom_type')
 
-        if custom_type == 'enum_required':
+        # 支持两种配置方式：custom_type（旧）和validation_type（新）
+        validation_type = config.get('validation_type') or config.get('custom_type')
+
+        # 新的规则模板实例化验证类型
+        if validation_type == 'field_required':
+            errors.extend(
+                AuditEngine._validate_field_required(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'regex_match':
+            errors.extend(
+                AuditEngine._validate_regex_match(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'enum_validation':
+            errors.extend(
+                AuditEngine._validate_enum_validation(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'length_limit':
+            errors.extend(
+                AuditEngine._validate_length_limit(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'numeric_range':
+            errors.extend(
+                AuditEngine._validate_numeric_range(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'date_validation':
+            errors.extend(
+                AuditEngine._validate_date_validation(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'no_pii_keywords':
+            errors.extend(
+                AuditEngine._validate_no_pii_keywords(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'field_dependency':
+            errors.extend(
+                AuditEngine._validate_field_dependency(record, rule, row_number, context, config)
+            )
+        elif validation_type == 'uniqueness_check':
+            errors.extend(
+                AuditEngine._validate_uniqueness_check(record, rule, row_number, context, config)
+            )
+        # 旧的验证类型（保持兼容性）
+        elif validation_type == 'enum_required':
             context.setdefault('custom_type', 'enum_required')
             errors.extend(
                 AuditEngine._validate_enum_required(record, rule, row_number, context, config)
             )
-        elif custom_type == 'lawful_basis_consistency':
+        elif validation_type == 'lawful_basis_consistency':
             context.setdefault('custom_type', 'lawful_basis_consistency')
             errors.extend(
                 AuditEngine._validate_lawful_basis_consistency(record, rule, row_number, context, config)
             )
-        elif custom_type == 'erasure_cascade':
+        elif validation_type == 'erasure_cascade':
             context.setdefault('custom_type', 'erasure_cascade')
             errors.extend(
                 AuditEngine._validate_erasure_cascade(record, rule, row_number, context, config)
             )
-        elif custom_type == 'train_field_whitelist':
+        elif validation_type == 'train_field_whitelist':
             context.setdefault('custom_type', 'train_field_whitelist')
             errors.extend(
                 AuditEngine._validate_train_field_whitelist(record, rule, row_number, context, config)
             )
         else:
+            # 默认使用pattern验证
             errors.extend(
                 AuditEngine._validate_custom_pattern(record, rule, row_number, context, config)
             )
@@ -935,3 +976,406 @@ class AuditEngine:
         if not total:
             return '0%'
         return f"{(count / total * 100):.2f}%"
+
+    # ========== 新增：规则模板实例化验证方法 ==========
+
+    @staticmethod
+    def _validate_field_required(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段必填"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        field_display_name = config.get('field_display_name', field_name)
+        error_message = config.get('error_message', f'{field_display_name}不能为空')
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+
+        # 检查是否为空、null或仅包含空格
+        if value is None or (isinstance(value, str) and not value.strip()):
+            errors.append({
+                "error_type": "data",
+                "row_number": row_number,
+                "column_name": field_name,
+                "original_value": value,
+                "error_message": error_message,
+                "rule_id": rule.id,
+                "severity": rule.severity,
+                "start_position": 0,
+                "end_position": 0
+            })
+
+        return errors
+
+    @staticmethod
+    def _validate_regex_match(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段格式（正则表达式）"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        pattern = config.get('pattern')
+        format_description = config.get('format_description', '格式不正确')
+
+        if not field_name or not pattern:
+            return errors
+
+        value = record.get(field_name)
+        if value and isinstance(value, str):
+            if not re.match(pattern, value):
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": field_name,
+                    "original_value": value,
+                    "error_message": f"{format_description}",
+                    "rule_id": rule.id,
+                    "severity": rule.severity,
+                    "start_position": 0,
+                    "end_position": len(value)
+                })
+
+        return errors
+
+    @staticmethod
+    def _validate_enum_validation(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证枚举值"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        allowed_values = config.get('allowed_values', [])
+        case_sensitive = config.get('case_sensitive', True)
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+        if value is not None:
+            # 根据是否区分大小写进行比较
+            if case_sensitive:
+                if value not in allowed_values:
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value,
+                        "error_message": f"值必须是以下之一: {', '.join(map(str, allowed_values))}",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+            else:
+                # 不区分大小写
+                allowed_lower = [str(v).lower() for v in allowed_values]
+                if str(value).lower() not in allowed_lower:
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value,
+                        "error_message": f"值必须是以下之一（不区分大小写）: {', '.join(map(str, allowed_values))}",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+
+        return errors
+
+    @staticmethod
+    def _validate_length_limit(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段长度"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        min_length = config.get('min_length')
+        max_length = config.get('max_length')
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+        if value and isinstance(value, str):
+            length = len(value)
+
+            if min_length is not None and length < min_length:
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": field_name,
+                    "original_value": value,
+                    "error_message": f"长度不能小于{min_length}个字符（当前{length}个）",
+                    "rule_id": rule.id,
+                    "severity": rule.severity
+                })
+
+            if max_length is not None and length > max_length:
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": field_name,
+                    "original_value": value[:50] + "..." if len(value) > 50 else value,
+                    "error_message": f"长度不能超过{max_length}个字符（当前{length}个）",
+                    "rule_id": rule.id,
+                    "severity": rule.severity
+                })
+
+        return errors
+
+    @staticmethod
+    def _validate_numeric_range(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证数值范围"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        min_value = config.get('min_value')
+        max_value = config.get('max_value')
+        allow_decimal = config.get('allow_decimal', False)
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+        if value is not None:
+            try:
+                if isinstance(value, str):
+                    numeric_value = float(value) if allow_decimal else int(value)
+                else:
+                    numeric_value = value
+
+                # 检查是否为整数（如果不允许小数）
+                if not allow_decimal and isinstance(numeric_value, float) and not numeric_value.is_integer():
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value,
+                        "error_message": "必须是整数",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+                    return errors
+
+                # 检查范围
+                if min_value is not None and numeric_value < min_value:
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value,
+                        "error_message": f"值不能小于{min_value}（当前为{numeric_value}）",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+
+                if max_value is not None and numeric_value > max_value:
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value,
+                        "error_message": f"值不能大于{max_value}（当前为{numeric_value}）",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+
+            except (ValueError, TypeError):
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": field_name,
+                    "original_value": value,
+                    "error_message": "必须是有效的数值",
+                    "rule_id": rule.id,
+                    "severity": rule.severity
+                })
+
+        return errors
+
+    @staticmethod
+    def _validate_date_validation(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证日期字段"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        date_format = config.get('date_format', 'YYYY-MM-DD')
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+        if value and isinstance(value, str):
+            # 简单的日期格式验证（可以根据需要扩展）
+            date_patterns = {
+                'YYYY-MM-DD': r'^\d{4}-\d{2}-\d{2}$',
+                'YYYY/MM/DD': r'^\d{4}/\d{2}/\d{2}$',
+                'DD-MM-YYYY': r'^\d{2}-\d{2}-\d{4}$',
+                'DD/MM/YYYY': r'^\d{2}/\d{2}/\d{4}$',
+            }
+
+            pattern = date_patterns.get(date_format)
+            if pattern and not re.match(pattern, value):
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": field_name,
+                    "original_value": value,
+                    "error_message": f"日期格式必须为{date_format}",
+                    "rule_id": rule.id,
+                    "severity": rule.severity
+                })
+
+        return errors
+
+    @staticmethod
+    def _validate_no_pii_keywords(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段不包含敏感关键词"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        blocked_keywords = config.get('blocked_keywords', [])
+        case_sensitive = config.get('case_sensitive', False)
+
+        if not field_name or not blocked_keywords:
+            return errors
+
+        value = record.get(field_name)
+        if value and isinstance(value, str):
+            search_value = value if case_sensitive else value.lower()
+
+            for keyword in blocked_keywords:
+                search_keyword = keyword if case_sensitive else keyword.lower()
+                if search_keyword in search_value:
+                    errors.append({
+                        "error_type": "data",
+                        "row_number": row_number,
+                        "column_name": field_name,
+                        "original_value": value[:50] + "..." if len(value) > 50 else value,
+                        "error_message": f"包含禁止的敏感词: {keyword}",
+                        "rule_id": rule.id,
+                        "severity": rule.severity
+                    })
+                    break  # 找到一个就够了
+
+        return errors
+
+    @staticmethod
+    def _validate_field_dependency(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段依赖关系"""
+        errors: List[Dict[str, Any]] = []
+        source_field = config.get('source_field')
+        dependent_field = config.get('dependent_field')
+        condition = config.get('condition', 'not_empty')
+        condition_value = config.get('condition_value')
+
+        if not source_field or not dependent_field:
+            return errors
+
+        source_value = record.get(source_field)
+        dependent_value = record.get(dependent_field)
+
+        # 判断条件是否满足
+        condition_met = False
+        if condition == 'not_empty':
+            condition_met = source_value is not None and (not isinstance(source_value, str) or source_value.strip())
+        elif condition == 'equals':
+            condition_met = str(source_value) == str(condition_value)
+        elif condition == 'contains':
+            condition_met = condition_value in str(source_value) if source_value else False
+
+        # 如果条件满足，检查依赖字段
+        if condition_met:
+            if dependent_value is None or (isinstance(dependent_value, str) and not dependent_value.strip()):
+                errors.append({
+                    "error_type": "data",
+                    "row_number": row_number,
+                    "column_name": dependent_field,
+                    "original_value": dependent_value,
+                    "error_message": f"当{source_field}有值时，{dependent_field}也必须有值",
+                    "rule_id": rule.id,
+                    "severity": rule.severity
+                })
+
+        return errors
+
+    @staticmethod
+    def _validate_uniqueness_check(
+        record: Dict[str, Any],
+        rule,
+        row_number: int,
+        context: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """验证字段唯一性"""
+        errors: List[Dict[str, Any]] = []
+        field_name = config.get('field_name')
+        ignore_empty = config.get('ignore_empty', True)
+
+        if not field_name:
+            return errors
+
+        value = record.get(field_name)
+
+        # 如果忽略空值且值为空，直接返回
+        if ignore_empty and (value is None or (isinstance(value, str) and not value.strip())):
+            return errors
+
+        # 使用context存储已见过的值
+        seen_values = context.setdefault('seen_values', {})
+
+        if value in seen_values:
+            # 发现重复
+            first_row = seen_values[value]
+            errors.append({
+                "error_type": "data",
+                "row_number": row_number,
+                "column_name": field_name,
+                "original_value": value,
+                "error_message": f"值重复，首次出现在第{first_row}行",
+                "rule_id": rule.id,
+                "severity": rule.severity
+            })
+        else:
+            # 记录首次出现
+            seen_values[value] = row_number
+
+        return errors
