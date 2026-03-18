@@ -11,5 +11,13 @@ __description__ = "数据集合规审计系统"
 from .rule.controller import RuleRouter
 from .task.controller import TaskRouter
 from .regulation.controller import RegulationRouter
+from .rule_template.controller import RuleTemplateRouter
+from .common_controller import CommonRouter
 
-__all__ = ['RuleRouter', 'TaskRouter', 'RegulationRouter']
+__all__ = [
+    'RuleRouter',
+    'TaskRouter',
+    'RegulationRouter',
+    'RuleTemplateRouter',
+    'CommonRouter'
+]

@@ -190,3 +190,76 @@ async def download_report(
         filename=f"audit_report_{id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+# ========== 规范别名路由（符合开发规范的统一接口）==========
+# 以下路由符合团队开发规范，提供统一的任务型接口
+# 保留上述原有路由以保证向后兼容
+
+@TaskRouter.post("/tasks", summary="创建审计任务（规范路径）")
+async def create_task_standard(
+    task_name: str = Form(..., description='任务名称', max_length=200),
+    description: Optional[str] = Form(None, description='备注'),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:create"]))
+) -> JSONResponse:
+    """
+    创建新的审计任务（符合开发规范的路径）
+
+    规范路径：POST /audit/tasks
+    原路径：POST /audit/task/create（向后兼容）
+    """
+    task_in = AuditTaskCreate(task_name=task_name, description=description)
+    task = await AuditTaskService.create_service(obj_in=task_in, auth=auth)
+    return SuccessResponse(data=task, msg="任务创建成功")
+
+
+@TaskRouter.get("/tasks/{task_id}", summary="获取任务详情（规范路径）")
+async def get_task_standard(
+    task_id: int = Path(..., description="任务ID"),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:detail"]))
+) -> JSONResponse:
+    """
+    获取任务详情（符合开发规范的路径）
+
+    规范路径：GET /audit/tasks/{task_id}
+    原路径：GET /audit/task/detail/{id}（向后兼容）
+    """
+    task = await AuditTaskService.detail_service(id=task_id, auth=auth)
+    return SuccessResponse(data=task)
+
+
+@TaskRouter.get("/tasks/{task_id}/result", summary="获取审计结果（规范路径）")
+async def get_result_standard(
+    task_id: int = Path(..., description="任务ID"),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:result"]))
+) -> JSONResponse:
+    """
+    获取审计结果（符合开发规范的路径）
+
+    规范路径：GET /audit/tasks/{task_id}/result
+    原路径：GET /audit/task/{id}/result（已符合）
+    """
+    result = await AuditTaskService.get_audit_result_service(task_id=task_id, auth=auth)
+    return SuccessResponse(data=result)
+
+
+@TaskRouter.get("/tasks/{task_id}/artifact", summary="下载审计产物（规范路径）")
+async def download_artifact_standard(
+    task_id: int = Path(..., description="任务ID"),
+    path: Optional[str] = Query(None, description="产物路径，如：reports/audit_report.xlsx"),
+    auth: AuthSchema = Depends(AuthPermission(["module_application:audit:task:download"]))
+):
+    """
+    下载审计产物（符合开发规范的路径）
+
+    规范路径：GET /audit/tasks/{task_id}/artifact?path=...
+    原路径：GET /audit/task/{id}/download-report（向后兼容）
+
+    默认下载审计报告，也可通过path参数指定其他产物
+    """
+    file_path = await AuditTaskService.download_report_service(task_id=task_id, auth=auth)
+    return FileResponse(
+        path=file_path,
+        filename=f"audit_report_{task_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
