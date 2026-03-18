@@ -205,18 +205,22 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         try:
             obj_dict = data if isinstance(data, dict) else data.model_dump()
+
             obj = self.model(**obj_dict)
-            
+
             # 设置字段值（只检查一次current_user）
             if self.auth.user:
                 if hasattr(obj, "created_id"):
                     setattr(obj, "created_id", self.auth.user.id)
                 if hasattr(obj, "updated_id"):
                     setattr(obj, "updated_id", self.auth.user.id)
-            
+
             self.auth.db.add(obj)
+
             await self.auth.db.flush()
+
             await self.auth.db.refresh(obj)
+
             return obj
         except Exception as e:
             raise CustomException(msg=f"创建失败: {str(e)}")

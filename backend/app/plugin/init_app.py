@@ -132,6 +132,10 @@ def register_routers(app: FastAPI) -> None:
     # 手动注册WebSocket路由，不使用速率限制器
     app.include_router(router=WS_AI, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
 
+    from app.plugin.module_application.train.ws import TrainWebSocketRouter
+    # 注册训练模块WebSocket路由
+    app.include_router(router=TrainWebSocketRouter, dependencies=[Depends(WebSocketRateLimiter(times=1, seconds=5))])
+
     # 注册动态路由 - 移除全局速率限制，让各接口自行控制
     from app.core.discover import get_dynamic_router
     app.include_router(router=get_dynamic_router())

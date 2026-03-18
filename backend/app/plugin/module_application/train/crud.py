@@ -1,22 +1,33 @@
 # -*- coding: utf-8 -*-
 
 import json
+import time
+from datetime import datetime
 from collections.abc import Sequence
 from typing import Any
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, desc, delete
 from sqlalchemy.engine import Result
 
 from app.core.base_crud import CRUDBase
 from app.core.exceptions import CustomException
 from app.api.v1.module_system.auth.schema import AuthSchema
 
-from .model import ModelConfigModel, ModelStatusEnum
+from .model import (
+    ModelConfigModel,
+    ModelStatusEnum,
+    TrainTaskModel,
+    TrainTaskStatusEnum,
+    TrainProgressModel
+)
 from .schema import (
     ModelConfigCreateSchema,
     ModelConfigUpdateSchema,
     ModelConfigOutSchema,
     ModelCardSchema,
-    ModelDetailSchema
+    ModelDetailSchema,
+    TrainTaskCreateRequest,
+    TrainTaskStatusUpdateRequest,
+    TrainProgressRecordRequest
 )
 
 
@@ -582,3 +593,811 @@ class ModelConfigCRUD(CRUDBase[ModelConfigModel, ModelConfigCreateSchema, ModelC
             return result.scalars().all()
         except Exception as e:
             raise CustomException(msg=f"获取热门模型失败: {str(e)}")
+
+
+class TrainTaskCRUD(CRUDBase[TrainTaskModel, TrainTaskCreateRequest, TrainTaskStatusUpdateRequest]):
+    """训练任务数据层"""
+
+    def __init__(self, auth: AuthSchema) -> None:
+        super().__init__(model=TrainTaskModel, auth=auth)
+
+    async def create_task_crud(
+        self,
+        data: TrainTaskCreateRequest,
+        dataset_info: dict,
+        model_config: dict
+    ) -> TrainTaskModel | None:
+        """
+        创建训练任务
+
+        参数:
+        - data: 训练任务创建请求
+        - dataset_info: 数据集信息快照
+        - model_config: 模型配置快照
+
+        返回:
+        - TrainTaskModel: 创建的训练任务
+
+        异常:
+        - CustomException: 创建失败时抛出异常
+        """
+        try:
+            # 生成任务ID: TRAIN_timestamp_userid
+            timestamp = int(time.time())
+            task_id = f"TRAIN_{timestamp}_{self.auth.user.id}"
+
+            # 检查任务ID是否已存在（理论上不会重复，但做双重保险）
+            existing = await self.get_by_task_id(task_id)
+            if existing:
+                raise CustomException(msg=f"任务ID '{task_id}' 已存在")
+
+            # 准备任务数据
+            task_data = {
+                'task_id': task_id,
+                'status': TrainTaskStatusEnum.CREATED.value,
+                'dataset_id': data.dataset_id,
+                'dataset_info': json.dumps(dataset_info, ensure_ascii=False),
+                'model_config_id': data.model_config_id,
+                'model_config': json.dumps(model_config, ensure_ascii=False),
+                'train_config': json.dumps(data.train_config.model_dump(), ensure_ascii=False),
+                'total_epochs': data.train_config.epochs,
+                'current_epoch': 0,
+                'progress_percentage': 0.0,
+                'remarks': data.remarks,
+                'created_id': self.auth.user.id,
+                'updated_id': self.auth.user.id
+            }
+
+            return await self.create(data=task_data)
+        except CustomException:
+            raise
+        except Exception as e:
+            raise CustomException(msg=f"创建训练任务失败: {str(e)}")
+
+    async def get_by_task_id(self, task_id: str) -> TrainTaskModel | None:
+        """
+        根据任务ID获取训练任务
+
+        参数:
+        - task_id: 任务ID
+
+        返回:
+        - TrainTaskModel | None: 训练任务或None
+        """
+        try:
+            sql = select(TrainTaskModel).where(TrainTaskModel.task_id == task_id)
+            result: Result = await self.auth.db.execute(sql)
+            return result.scalars().first()
+        except Exception as e:
+            raise CustomException(msg=f"查询训练任务失败: {str(e)}")
+
+    async def get_by_id_crud(self, task_id: int) -> TrainTaskModel | None:
+        """
+        根据主键ID获取训练任务详情
+
+        参数:
+        - task_id: 主键ID
+
+        返回:
+        - TrainTaskModel | None: 训练任务或None
+        """
+        try:
+            return await self.get(id=task_id)
+        except Exception as e:
+            raise CustomException(msg=f"获取训练任务详情失败: {str(e)}")
+
+    async def update_task_status(
+        self,
+        task_id: str,
+        status: str,
+        error_message: str | None = None
+    ) -> TrainTaskModel | None:
+        """
+        更新训练任务状态
+
+        参数:
+        - task_id: 任务ID
+        - status: 新状态
+        - error_message: 错误信息（如果状态为failed）
+
+        返回:
+        - TrainTaskModel: 更新后的训练任务
+
+        异常:
+        - CustomException: 更新失败时抛出异常
+        """
+        try:
+            # 验证状态值
+            valid_statuses = {e.value for e in TrainTaskStatusEnum}
+            if status not in valid_statuses:
+                raise CustomException(msg=f"无效的状态值: {status}")
+
+            # 获取任务
+            task = await self.get_by_task_id(task_id)
+            if not task:
+                raise CustomException(msg=f"任务 '{task_id}' 不存在")
+
+            # 准备更新数据
+            update_data = {
+                'status': status,
+                'updated_by_id': self.auth.user.id if self.auth.user else None
+            }
+
+            # 根据状态设置时间戳
+            if status == TrainTaskStatusEnum.RUNNING.value and not task.actual_start_time:
+                update_data['actual_start_time'] = datetime.now()
+            elif status == TrainTaskStatusEnum.COMPLETED.value:
+                update_data['actual_completion_time'] = datetime.now()
+                update_data['progress_percentage'] = 100.0
+            elif status == TrainTaskStatusEnum.FAILED.value:
+                update_data['actual_completion_time'] = datetime.now()
+                if error_message:
+                    update_data['error_message'] = error_message
+
+            return await self.update(id=task.id, data=update_data)
+        except CustomException:
+            raise
+        except Exception as e:
+            raise CustomException(msg=f"更新任务状态失败: {str(e)}")
+
+    async def update_task_progress(
+        self,
+        task_id: str,
+        current_epoch: int,
+        progress_percentage: float
+    ) -> TrainTaskModel | None:
+        """
+        更新训练任务进度
+
+        参数:
+        - task_id: 任务ID
+        - current_epoch: 当前轮次
+        - progress_percentage: 进度百分比
+
+        返回:
+        - TrainTaskModel: 更新后的训练任务
+
+        异常:
+        - CustomException: 更新失败时抛出异常
+        """
+        try:
+            task = await self.get_by_task_id(task_id)
+            if not task:
+                raise CustomException(msg=f"任务 '{task_id}' 不存在")
+
+            update_data = {
+                'current_epoch': current_epoch,
+                'progress_percentage': min(progress_percentage, 100.0),
+                'updated_by_id': self.auth.user.id if self.auth.user else None
+            }
+
+            return await self.update(id=task.id, data=update_data)
+        except CustomException:
+            raise
+        except Exception as e:
+            raise CustomException(msg=f"更新任务进度失败: {str(e)}")
+
+    async def get_tasks_by_status(
+        self,
+        status: str,
+        limit: int = 100
+    ) -> Sequence[TrainTaskModel]:
+        """
+        根据状态获取训练任务列表
+
+        参数:
+        - status: 任务状态
+        - limit: 限制数量
+
+        返回:
+        - Sequence[TrainTaskModel]: 训练任务列表
+        """
+        try:
+            sql = select(TrainTaskModel).where(
+                TrainTaskModel.status == status
+            ).order_by(
+                TrainTaskModel.created_time.desc()
+            ).limit(limit)
+
+            result: Result = await self.auth.db.execute(sql)
+            return result.scalars().all()
+        except Exception as e:
+            raise CustomException(msg=f"查询任务列表失败: {str(e)}")
+
+    async def get_user_tasks(
+        self,
+        user_id: int | None = None,
+        status: str | None = None,
+        limit: int = 100
+    ) -> Sequence[TrainTaskModel]:
+        """
+        获取用户的训练任务列表
+
+        参数:
+        - user_id: 用户ID（默认为当前用户）
+        - status: 任务状态过滤
+        - limit: 限制数量
+
+        返回:
+        - Sequence[TrainTaskModel]: 训练任务列表
+        """
+        try:
+            target_user_id = user_id if user_id is not None else self.auth.user.id
+
+            sql = select(TrainTaskModel).where(
+                TrainTaskModel.created_id == target_user_id
+            )
+
+            if status:
+                sql = sql.where(TrainTaskModel.status == status)
+
+            sql = sql.order_by(
+                TrainTaskModel.created_time.desc()
+            ).limit(limit)
+
+            result: Result = await self.auth.db.execute(sql)
+            return result.scalars().all()
+        except Exception as e:
+            raise CustomException(msg=f"获取用户任务列表失败: {str(e)}")
+
+    async def page_crud(
+        self,
+        page: int = 1,
+        page_size: int = 10,
+        status: str | None = None,
+        dataset_id: int | None = None,
+        model_config_id: int | None = None,
+        user_id: int | None = None
+    ) -> tuple[Sequence[TrainTaskModel], int]:
+        """
+        分页查询训练任务列表
+
+        参数:
+        - page: 页码
+        - page_size: 每页数量
+        - status: 状态过滤
+        - dataset_id: 数据集ID过滤
+        - model_config_id: 模型配置ID过滤
+        - user_id: 用户ID过滤
+
+        返回:
+        - tuple[Sequence[TrainTaskModel], int]: (任务列表, 总数)
+        """
+        try:
+            sql = select(TrainTaskModel)
+
+            # 应用过滤条件
+            if status:
+                sql = sql.where(TrainTaskModel.status == status)
+            if dataset_id:
+                sql = sql.where(TrainTaskModel.dataset_id == dataset_id)
+            if model_config_id:
+                sql = sql.where(TrainTaskModel.model_config_id == model_config_id)
+            if user_id:
+                sql = sql.where(TrainTaskModel.created_id == user_id)
+
+            # 获取总数
+            count_sql = select(func.count()).select_from(sql.subquery())
+            count_result = await self.auth.db.execute(count_sql)
+            total = count_result.scalar() or 0
+
+            # 分页查询
+            sql = sql.order_by(
+                TrainTaskModel.created_time.desc()
+            ).limit(page_size).offset((page - 1) * page_size)
+
+            result: Result = await self.auth.db.execute(sql)
+            tasks = result.scalars().all()
+
+            return tasks, total
+        except Exception as e:
+            raise CustomException(msg=f"分页查询训练任务失败: {str(e)}")
+
+    async def delete_task_crud(self, task_id: str) -> bool:
+        """
+        删除训练任务（包括数据库记录、进度记录和文件）
+
+        参数:
+        - task_id: 任务ID
+
+        返回:
+        - bool: 是否删除成功
+
+        异常:
+        - CustomException: 删除失败时抛出异常
+        """
+        try:
+            from pathlib import Path
+            import shutil
+            from app.core.logger import log
+
+            task = await self.get_by_task_id(task_id)
+            if not task:
+                raise CustomException(msg=f"任务 '{task_id}' 不存在")
+
+            # 检查任务状态，不允许删除正在运行的任务
+            if task.status == TrainTaskStatusEnum.RUNNING.value:
+                raise CustomException(msg="不能删除正在运行的任务，请先停止任务")
+
+            # 1. 删除关联的进度记录（不提交事务）
+            try:
+                sql = delete(TrainProgressModel).where(
+                    TrainProgressModel.task_id == task_id
+                )
+                await self.auth.db.execute(sql)
+                log.info(f"已删除任务 {task_id} 的进度记录")
+            except Exception as e:
+                log.warning(f"删除进度记录失败: {str(e)}")
+
+            # 2. 删除数据库记录（不提交事务）
+            await self.delete([task.id])
+
+            # 3. 提交事务
+            await self.auth.db.commit()
+
+            # 4. 删除任务目录和文件（在事务提交后）
+            try:
+                task_dir = Path("static/train/tasks") / task_id
+                if task_dir.exists():
+                    shutil.rmtree(task_dir)
+                    log.info(f"已删除任务目录: {task_dir}")
+            except Exception as e:
+                log.warning(f"删除任务目录失败: {str(e)}")
+
+            log.info(f"成功删除训练任务: {task_id}")
+            return True
+
+        except CustomException:
+            await self.auth.db.rollback()
+            raise
+        except Exception as e:
+            await self.auth.db.rollback()
+            raise CustomException(msg=f"删除训练任务失败: {str(e)}")
+
+    async def update_task_result(
+        self,
+        task_id: str,
+        final_metrics: dict,
+        model_save_path: str | None = None,
+        result_file_path: str | None = None
+    ) -> TrainTaskModel | None:
+        """
+        更新训练任务结果
+
+        参数:
+        - task_id: 任务ID
+        - final_metrics: 最终评估指标
+        - model_save_path: 模型保存路径
+        - result_file_path: 结果文件路径
+
+        返回:
+        - TrainTaskModel: 更新后的训练任务
+
+        异常:
+        - CustomException: 更新失败时抛出异常
+        """
+        try:
+            task = await self.get_by_task_id(task_id)
+            if not task:
+                raise CustomException(msg=f"任务 '{task_id}' 不存在")
+
+            update_data = {
+                'final_metrics': json.dumps(final_metrics, ensure_ascii=False),
+                'updated_by_id': self.auth.user.id if self.auth.user else None
+            }
+
+            if model_save_path:
+                update_data['model_save_path'] = model_save_path
+            if result_file_path:
+                update_data['result_file_path'] = result_file_path
+
+            return await self.update(id=task.id, data=update_data)
+        except CustomException:
+            raise
+        except Exception as e:
+            raise CustomException(msg=f"更新任务结果失败: {str(e)}")
+
+
+class TrainProgressCRUD(CRUDBase[TrainProgressModel, TrainProgressRecordRequest, TrainProgressRecordRequest]):
+    """训练进度数据层"""
+
+    def __init__(self, auth: AuthSchema) -> None:
+        super().__init__(model=TrainProgressModel, auth=auth)
+
+    async def create_progress_record(
+        self,
+        data: TrainProgressRecordRequest
+    ) -> TrainProgressModel | None:
+        """
+        创建训练进度记录
+
+        参数:
+        - data: 训练进度记录请求
+
+        返回:
+        - TrainProgressModel: 创建的进度记录
+
+        异常:
+        - CustomException: 创建失败时抛出异常
+        """
+        try:
+            from app.core.logger import log
+            from sqlalchemy import text
+            from app.utils.common_util import uuid4_str
+            from datetime import datetime
+
+            # 验证任务是否存在
+            task_crud = TrainTaskCRUD(auth=self.auth)
+            task = await task_crud.get_by_task_id(data.task_id)
+            if not task:
+                raise CustomException(msg=f"任务 '{data.task_id}' 不存在")
+
+            # 准备进度数据
+            progress_data = data.model_dump()
+
+            # 处理可选的JSON字段
+            resource_metrics_json = None
+            if data.resource_metrics:
+                resource_metrics_json = json.dumps(data.resource_metrics, ensure_ascii=False)
+
+            additional_metrics_json = None
+            if data.additional_metrics:
+                additional_metrics_json = json.dumps(data.additional_metrics, ensure_ascii=False)
+
+            # 生成UUID和时间戳（ModelMixin提供的字段）
+            record_uuid = uuid4_str()
+            now = datetime.now()
+
+            # 使用原始SQL INSERT来绕过SQLAlchemy ORM的问题
+            insert_sql = text("""
+                INSERT INTO train_progress (
+                    uuid, status, description, created_time, updated_time,
+                    task_id, epoch, batch, total_batches,
+                    train_loss, train_accuracy, val_loss, val_accuracy,
+                    learning_rate, epoch_progress, overall_progress,
+                    resource_metrics, additional_metrics, timestamp
+                ) VALUES (
+                    :uuid, :status, :description, :created_time, :updated_time,
+                    :task_id, :epoch, :batch, :total_batches,
+                    :train_loss, :train_accuracy, :val_loss, :val_accuracy,
+                    :learning_rate, :epoch_progress, :overall_progress,
+                    :resource_metrics, :additional_metrics, :timestamp
+                )
+            """)
+
+            result = await self.auth.db.execute(
+                insert_sql,
+                {
+                    "uuid": record_uuid,
+                    "status": "0",
+                    "description": None,
+                    "created_time": now,
+                    "updated_time": now,
+                    "task_id": data.task_id,
+                    "epoch": data.epoch,
+                    "batch": data.batch,
+                    "total_batches": data.total_batches,
+                    "train_loss": data.train_loss,
+                    "train_accuracy": data.train_accuracy,
+                    "val_loss": data.val_loss,
+                    "val_accuracy": data.val_accuracy,
+                    "learning_rate": data.learning_rate,
+                    "epoch_progress": data.epoch_progress,
+                    "overall_progress": data.overall_progress,
+                    "resource_metrics": resource_metrics_json,
+                    "additional_metrics": additional_metrics_json,
+                    "timestamp": now
+                }
+            )
+
+            await self.auth.db.commit()
+
+            # 获取刚插入的记录ID
+            inserted_id = result.lastrowid
+
+            # 查询并返回创建的记录 - 使用明确的列名
+            query_sql = text("""
+                SELECT id, uuid, status, description, created_time, updated_time,
+                       task_id, epoch, batch, total_batches,
+                       train_loss, train_accuracy, val_loss, val_accuracy,
+                       learning_rate, epoch_progress, overall_progress,
+                       resource_metrics, timestamp, additional_metrics
+                FROM train_progress WHERE id = :id
+            """)
+            query_result = await self.auth.db.execute(query_sql, {"id": inserted_id})
+            row = query_result.fetchone()
+
+            if row:
+                # 将结果转换为模型对象
+                record = TrainProgressModel(
+                    id=row[0],
+                    uuid=row[1],
+                    status=row[2],
+                    description=row[3],
+                    created_time=row[4],
+                    updated_time=row[5],
+                    task_id=row[6],
+                    epoch=row[7],
+                    batch=row[8],
+                    total_batches=row[9],
+                    train_loss=row[10],
+                    train_accuracy=row[11],
+                    val_loss=row[12],
+                    val_accuracy=row[13],
+                    learning_rate=row[14],
+                    epoch_progress=row[15],
+                    overall_progress=row[16],
+                    resource_metrics=json.loads(row[17]) if row[17] else None,
+                    timestamp=row[18],
+                    additional_metrics=json.loads(row[19]) if row[19] else None
+                )
+
+                return record
+
+            return None
+
+        except CustomException:
+            raise
+        except Exception as e:
+            log.error(f"创建进度记录失败: {str(e)}")
+            raise CustomException(msg=f"创建进度记录失败: {str(e)}")
+
+    async def get_latest_progress(
+        self,
+        task_id: str
+    ) -> TrainProgressModel | None:
+        """
+        获取任务的最新进度记录（优先返回有验证指标的记录）
+
+        参数:
+        - task_id: 任务ID
+
+        返回:
+        - TrainProgressModel | None: 最新进度记录或None
+        """
+        try:
+            # 优先查询有验证指标的最新记录（epoch级别的进度）
+            sql_with_val = select(TrainProgressModel).where(
+                and_(
+                    TrainProgressModel.task_id == task_id,
+                    TrainProgressModel.val_loss.isnot(None)
+                )
+            ).order_by(
+                TrainProgressModel.epoch.desc(),
+                TrainProgressModel.batch.desc()
+            ).limit(1)
+
+            result: Result = await self.auth.db.execute(sql_with_val)
+            record = result.scalars().first()
+
+            # 如果没有验证指标的记录，则返回最新的任意记录
+            if not record:
+                sql = select(TrainProgressModel).where(
+                    TrainProgressModel.task_id == task_id
+                ).order_by(
+                    TrainProgressModel.epoch.desc(),
+                    TrainProgressModel.batch.desc()
+                ).limit(1)
+
+                result = await self.auth.db.execute(sql)
+                record = result.scalars().first()
+
+            return record
+        except Exception as e:
+            raise CustomException(msg=f"获取最新进度失败: {str(e)}")
+
+    async def get_progress_by_epoch(
+        self,
+        task_id: str,
+        epoch: int
+    ) -> Sequence[TrainProgressModel]:
+        """
+        获取指定epoch的所有进度记录
+
+        参数:
+        - task_id: 任务ID
+        - epoch: 训练轮次
+
+        返回:
+        - Sequence[TrainProgressModel]: 进度记录列表
+        """
+        try:
+            sql = select(TrainProgressModel).where(
+                TrainProgressModel.task_id == task_id,
+                TrainProgressModel.epoch == epoch
+            ).order_by(
+                TrainProgressModel.batch.asc()
+            )
+
+            result: Result = await self.auth.db.execute(sql)
+            return result.scalars().all()
+        except Exception as e:
+            raise CustomException(msg=f"获取epoch进度失败: {str(e)}")
+
+    async def get_progress_history(
+        self,
+        task_id: str,
+        limit: int = 1000
+    ) -> Sequence[TrainProgressModel]:
+        """
+        获取任务的历史进度记录
+
+        参数:
+        - task_id: 任务ID
+        - limit: 限制数量
+
+        返回:
+        - Sequence[TrainProgressModel]: 进度记录列表
+        """
+        try:
+            sql = select(TrainProgressModel).where(
+                TrainProgressModel.task_id == task_id
+            ).order_by(
+                TrainProgressModel.epoch.asc(),
+                TrainProgressModel.batch.asc()
+            ).limit(limit)
+
+            result: Result = await self.auth.db.execute(sql)
+            return result.scalars().all()
+        except Exception as e:
+            raise CustomException(msg=f"获取历史进度失败: {str(e)}")
+
+    async def get_progress_curve_data(
+        self,
+        task_id: str,
+        metrics: list[str] | None = None
+    ) -> list[dict]:
+        """
+        获取训练曲线数据（每个epoch的汇总数据，优先选择有验证指标的记录）
+
+        参数:
+        - task_id: 任务ID
+        - metrics: 需要的指标列表（默认为所有指标）
+
+        返回:
+        - list[dict]: 训练曲线数据
+
+        异常:
+        - CustomException: 查询失败时抛出异常
+        """
+        try:
+            # 查询所有有验证指标的记录（epoch级别的进度）
+            sql = select(TrainProgressModel).where(
+                and_(
+                    TrainProgressModel.task_id == task_id,
+                    TrainProgressModel.val_loss.isnot(None)
+                )
+            ).order_by(
+                TrainProgressModel.epoch.asc()
+            )
+
+            result: Result = await self.auth.db.execute(sql)
+            records = result.scalars().all()
+
+            # 如果没有验证指标的记录，则查询所有记录并按epoch分组
+            if not records:
+                sql = select(TrainProgressModel).where(
+                    TrainProgressModel.task_id == task_id
+                ).order_by(
+                    TrainProgressModel.epoch.asc(),
+                    TrainProgressModel.batch.desc()
+                )
+
+                result = await self.auth.db.execute(sql)
+                all_records = result.scalars().all()
+
+                # 按epoch分组，只取每个epoch的最后一条记录
+                epoch_records = {}
+                for record in all_records:
+                    if record.epoch not in epoch_records:
+                        epoch_records[record.epoch] = record
+
+                records = [epoch_records[epoch] for epoch in sorted(epoch_records.keys())]
+
+            # 构建曲线数据
+            curve_data = []
+            for record in records:
+                data_point = {
+                    'epoch': record.epoch,
+                    'train_loss': record.train_loss,
+                    'train_accuracy': record.train_accuracy,
+                    'val_loss': record.val_loss,
+                    'val_accuracy': record.val_accuracy,
+                    'learning_rate': record.learning_rate,
+                    'epoch_progress': record.epoch_progress,
+                    'overall_progress': record.overall_progress
+                }
+
+                # 如果指定了metrics，只返回指定的指标
+                if metrics:
+                    data_point = {k: v for k, v in data_point.items() if k in metrics or k == 'epoch'}
+
+                curve_data.append(data_point)
+
+            return curve_data
+        except Exception as e:
+            raise CustomException(msg=f"获取训练曲线数据失败: {str(e)}")
+
+    async def delete_task_progress(
+        self,
+        task_id: str
+    ) -> int:
+        """
+        删除任务的所有进度记录
+
+        参数:
+        - task_id: 任务ID
+
+        返回:
+        - int: 删除的记录数
+
+        异常:
+        - CustomException: 删除失败时抛出异常
+        """
+        try:
+            sql = delete(TrainProgressModel).where(
+                TrainProgressModel.task_id == task_id
+            )
+
+            result = await self.auth.db.execute(sql)
+            await self.auth.db.commit()
+
+            return result.rowcount
+        except Exception as e:
+            await self.auth.db.rollback()
+            raise CustomException(msg=f"删除进度记录失败: {str(e)}")
+
+    async def get_epoch_summary(
+        self,
+        task_id: str
+    ) -> list[dict]:
+        """
+        获取每个epoch的汇总统计
+
+        参数:
+        - task_id: 任务ID
+
+        返回:
+        - list[dict]: 每个epoch的统计数据
+
+        异常:
+        - CustomException: 查询失败时抛出异常
+        """
+        try:
+            # 按epoch分组统计
+            sql = select(
+                TrainProgressModel.epoch,
+                func.avg(TrainProgressModel.train_loss).label('avg_train_loss'),
+                func.min(TrainProgressModel.train_loss).label('min_train_loss'),
+                func.max(TrainProgressModel.train_loss).label('max_train_loss'),
+                func.avg(TrainProgressModel.train_accuracy).label('avg_train_accuracy'),
+                func.avg(TrainProgressModel.val_loss).label('avg_val_loss'),
+                func.avg(TrainProgressModel.val_accuracy).label('avg_val_accuracy'),
+                func.count().label('batch_count')
+            ).where(
+                TrainProgressModel.task_id == task_id
+            ).group_by(
+                TrainProgressModel.epoch
+            ).order_by(
+                TrainProgressModel.epoch.asc()
+            )
+
+            result: Result = await self.auth.db.execute(sql)
+            rows = result.all()
+
+            summary = []
+            for row in rows:
+                summary.append({
+                    'epoch': row.epoch,
+                    'avg_train_loss': float(row.avg_train_loss) if row.avg_train_loss else None,
+                    'min_train_loss': float(row.min_train_loss) if row.min_train_loss else None,
+                    'max_train_loss': float(row.max_train_loss) if row.max_train_loss else None,
+                    'avg_train_accuracy': float(row.avg_train_accuracy) if row.avg_train_accuracy else None,
+                    'avg_val_loss': float(row.avg_val_loss) if row.avg_val_loss else None,
+                    'avg_val_accuracy': float(row.avg_val_accuracy) if row.avg_val_accuracy else None,
+                    'batch_count': row.batch_count
+                })
+
+            return summary
+        except Exception as e:
+            raise CustomException(msg=f"获取epoch汇总统计失败: {str(e)}")

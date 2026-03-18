@@ -156,7 +156,7 @@ const loading = ref(false);
 const recommendations = ref<ModelRecommendationItem[]>([]);
 const datasetInfo = ref<DatasetInfoForRecommendation | null>(null);
 const totalRecommended = ref(0);
-const selectedModelId = ref<number | null>(null);
+const selectedModelId = ref<number | undefined>(undefined);
 
 // ==================== Computed ====================
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from fastapi import Query
 
 from app.core.base_schema import BaseSchema, UserBySchema
@@ -352,54 +352,109 @@ class ModelConfigQueryParam:
 
 # ==================== 训练任务相关 ====================
 
-class TrainTaskCreateSchema(BaseModel):
-    """创建训练任务请求"""
-    task_name: str = Field(..., min_length=1, max_length=255, description="训练任务名称")
-    dataset_id: int = Field(..., gt=0, description="数据集ID")
-    model_id: int = Field(..., gt=0, description="模型配置ID")
-    train_config: dict = Field(..., description="训练配置(可基于模型默认配置修改)")
-    description: str | None = Field(default=None, max_length=1000, description="任务描述")
+class TrainConfigSchema(BaseModel):
+    """训练配置"""
+    # 基础超参数
+    learning_rate: float = Field(..., gt=0, le=1, description="学习率")
+    batch_size: int = Field(..., gt=0, le=1024, description="批次大小")
+    epochs: int = Field(..., gt=0, le=1000, description="训练轮数")
+    optimizer: str = Field(..., description="优化器(adam/sgd/adamw/rmsprop)")
 
-    @field_validator('train_config')
+    # 可选超参数
+    loss_function: str | None = Field(default="cross_entropy", description="损失函数")
+    weight_decay: float | None = Field(default=0.0001, ge=0, description="权重衰减")
+    momentum: float | None = Field(default=0.9, ge=0, le=1, description="动量(仅SGD)")
+    lr_scheduler: str | None = Field(default=None, description="学习率调度器")
+    early_stopping: bool = Field(default=False, description="是否启用早停")
+    early_stopping_patience: int | None = Field(default=10, gt=0, description="早停耐心值")
+
+    # 数据增强
+    data_augmentation: bool = Field(default=True, description="是否启用数据增强")
+    validation_split: float = Field(default=0.2, ge=0, le=0.5, description="验证集比例")
+
+    # 其他配置
+    seed: int | None = Field(default=42, description="随机种子")
+    num_workers: int = Field(default=4, ge=0, description="数据加载线程数")
+    pin_memory: bool = Field(default=True, description="是否使用pin_memory")
+
+    @field_validator('optimizer')
     @classmethod
-    def validate_train_config(cls, v: dict) -> dict:
-        """验证训练配置"""
-        required_keys = ['learning_rate', 'batch_size', 'epochs']
-        for key in required_keys:
-            if key not in v:
-                raise ValueError(f'训练配置缺少必需字段: {key}')
+    def validate_optimizer(cls, v: str) -> str:
+        """验证优化器"""
+        allowed = {'adam', 'sgd', 'adamw', 'rmsprop'}
+        if v.lower() not in allowed:
+            raise ValueError(f'不支持的优化器: {v}, 仅支持: {", ".join(allowed)}')
+        return v.lower()
+
+
+class TrainTaskCreateRequest(BaseModel):
+    """创建训练任务请求（对应使用手册第四步）"""
+    dataset_id: int = Field(..., gt=0, description="数据集ID")
+    model_config_id: int = Field(..., gt=0, description="模型配置ID")
+    train_config: TrainConfigSchema = Field(..., description="训练配置")
+    remarks: str | None = Field(default=None, max_length=1000, description="备注信息")
+
+    @field_validator('train_config', mode='before')
+    @classmethod
+    def parse_train_config(cls, v):
+        """解析训练配置"""
+        if isinstance(v, dict):
+            return TrainConfigSchema(**v)
         return v
 
 
-# 注意：这是一个简单的常量类，不是 Pydantic BaseModel
-# 如果需要在请求中使用，应该直接使用字符串字面量
-# class TrainTaskStatusEnum:
-#     """训练任务状态枚举（已移至 model.py，此处注释保留供参考）"""
-#     PENDING = "pending"  # 等待中
-#     RUNNING = "running"  # 运行中
-#     COMPLETED = "completed"  # 已完成
-#     FAILED = "failed"  # 失败
-#     CANCELLED = "cancelled"  # 已取消
+class TrainTaskStatusUpdateRequest(BaseModel):
+    """更新训练任务状态请求"""
+    status: str = Field(..., description="任务状态(created/pending/running/paused/completed/failed/cancelled)")
+    error_message: str | None = Field(default=None, description="错误信息（status为failed时必填）")
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        """验证状态值"""
+        allowed = {'created', 'pending', 'running', 'paused', 'completed', 'failed', 'cancelled'}
+        if v not in allowed:
+            raise ValueError(f'不支持的状态值: {v}, 仅支持: {", ".join(allowed)}')
+        return v
 
 
-class TrainTaskOutSchema(BaseSchema, UserBySchema):
-    """训练任务输出"""
+class TrainTaskResponse(BaseSchema, UserBySchema):
+    """训练任务详情响应（对应使用手册任务记录结构）"""
     model_config = ConfigDict(from_attributes=True)
 
-    task_name: str = Field(..., description="训练任务名称")
-    dataset_id: int = Field(..., description="数据集ID")
-    model_id: int = Field(..., description="模型配置ID")
-    train_config: dict = Field(..., description="训练配置")
+    # 任务标识
+    task_id: str = Field(..., description="任务ID")
     status: str = Field(..., description="任务状态")
-    progress: float = Field(default=0.0, ge=0, le=1, description="训练进度(0-1)")
-    current_epoch: int = Field(default=0, description="当前训练轮次")
-    total_epochs: int = Field(..., description="总训练轮次")
-    metrics: dict | None = Field(default=None, description="训练指标")
-    result_path: str | None = Field(default=None, description="训练结果路径")
-    error_message: str | None = Field(default=None, description="错误信息")
-    description: str | None = Field(default=None, description="任务描述")
 
-    @field_validator('train_config', 'metrics', mode='before')
+    # 关联信息
+    dataset_id: int = Field(..., description="数据集ID")
+    dataset_info: dict = Field(..., description="数据集信息快照")
+    dataset_name: str | None = Field(default=None, description="数据集名称")
+    model_config_id: int = Field(..., description="模型配置ID")
+    model_configuration: dict = Field(..., validation_alias="model_config", description="模型配置快照")
+    model_name: str | None = Field(default=None, description="模型名称")
+    train_config: dict = Field(..., description="训练配置")
+
+    # 时间信息
+    estimated_start_time: str | None = Field(default=None, description="预计开始时间")
+    actual_start_time: str | None = Field(default=None, description="实际开始时间")
+    estimated_completion_time: str | None = Field(default=None, description="预计完成时间")
+    actual_completion_time: str | None = Field(default=None, description="实际完成时间")
+
+    # 进度信息
+    current_epoch: int = Field(default=0, description="当前训练轮数")
+    total_epochs: int = Field(..., description="总训练轮数")
+    progress_percentage: float = Field(default=0.0, description="总体进度百分比(0-100)")
+
+    # 结果信息
+    model_save_path: str | None = Field(default=None, description="模型保存路径")
+    log_file_path: str | None = Field(default=None, description="日志文件路径")
+    result_file_path: str | None = Field(default=None, description="结果文件路径")
+    final_metrics: dict | None = Field(default=None, description="最终评估指标")
+    error_message: str | None = Field(default=None, description="错误信息")
+    remarks: str | None = Field(default=None, description="备注信息")
+
+    @field_validator('dataset_info', 'model_configuration', 'train_config', 'final_metrics', mode='before')
     @classmethod
     def parse_json_fields(cls, v):
         """将 JSON 字符串转换为 dict"""
@@ -411,3 +466,261 @@ class TrainTaskOutSchema(BaseSchema, UserBySchema):
             except json.JSONDecodeError:
                 return None
         return v
+
+    @field_validator('estimated_start_time', 'actual_start_time',
+                     'estimated_completion_time', 'actual_completion_time', mode='before')
+    @classmethod
+    def convert_datetime_to_str(cls, v):
+        """将 datetime 对象转换为字符串"""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):
+            return v.isoformat()
+        return str(v)
+
+    @model_validator(mode='after')
+    def extract_names(self):
+        """从dataset_info和model_configuration中提取名称"""
+        # 提取数据集名称
+        if self.dataset_name is None and self.dataset_info:
+            if isinstance(self.dataset_info, dict):
+                self.dataset_name = self.dataset_info.get('name')
+
+        # 提取模型名称
+        if self.model_name is None and self.model_configuration:
+            if isinstance(self.model_configuration, dict):
+                self.model_name = self.model_configuration.get('model_name')
+
+        return self
+
+
+class TrainTaskListResponse(BaseModel):
+    """训练任务列表响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: str = Field(..., description="任务ID")
+    status: str = Field(..., description="任务状态")
+    dataset_id: int = Field(..., description="数据集ID")
+    model_config_id: int = Field(..., description="模型配置ID")
+    current_epoch: int = Field(..., description="当前轮数")
+    total_epochs: int = Field(..., description="总轮数")
+    progress_percentage: float = Field(..., description="进度百分比")
+    created_time: str = Field(..., description="创建时间")
+    actual_start_time: str | None = Field(default=None, description="开始时间")
+
+    # 简化的快照信息（从JSON中提取）
+    dataset_name: str | None = Field(default=None, description="数据集名称")
+    model_name: str | None = Field(default=None, description="模型名称")
+    model_save_path: str | None = Field(default=None, description="模型保存路径（相对路径）")
+
+    # 用于存储原始JSON数据的隐藏字段
+    dataset_info: dict | None = Field(default=None, exclude=True)
+    model_configuration: dict | None = Field(default=None, validation_alias="model_config", exclude=True)
+
+    @field_validator('dataset_info', 'model_configuration', mode='before')
+    @classmethod
+    def parse_json_fields(cls, v):
+        """将 JSON 字符串转换为 dict"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
+
+    @model_validator(mode='after')
+    def extract_names(self):
+        """从dataset_info和model_configuration中提取名称"""
+        if self.dataset_name is None and self.dataset_info:
+            if isinstance(self.dataset_info, dict):
+                self.dataset_name = self.dataset_info.get('name')
+        if self.model_name is None and self.model_configuration:
+            if isinstance(self.model_configuration, dict):
+                self.model_name = self.model_configuration.get('model_name') or self.model_configuration.get('display_name')
+        return self
+
+    @field_validator('created_time', 'actual_start_time', mode='before')
+    @classmethod
+    def convert_datetime_to_str(cls, v):
+        """将 datetime 对象转换为字符串"""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):
+            return v.isoformat()
+        return str(v)
+
+
+# ==================== 训练进度相关 ====================
+
+class TrainMetricsSchema(BaseModel):
+    """训练指标（对应使用手册WebSocket实时数据）"""
+    train_loss: float = Field(..., description="训练损失值")
+    train_accuracy: float = Field(..., ge=0, le=1, description="训练准确率(0-1)")
+    val_loss: float | None = Field(default=None, description="验证损失值")
+    val_accuracy: float | None = Field(default=None, ge=0, le=1, description="验证准确率(0-1)")
+    learning_rate: float = Field(..., description="当前学习率")
+
+
+class ResourceMetricsSchema(BaseModel):
+    """资源监控指标（对应使用手册资源监控数据）"""
+    gpu: dict | None = Field(default=None, description="GPU指标")
+    system: dict | None = Field(default=None, description="系统指标")
+
+
+class TrainProgressRecordRequest(BaseModel):
+    """训练进度记录请求"""
+    task_id: str = Field(..., description="训练任务ID")
+    epoch: int = Field(..., gt=0, description="当前训练轮数")
+    batch: int | None = Field(default=None, ge=0, description="当前批次")
+    total_batches: int | None = Field(default=None, gt=0, description="总批次数")
+
+    # 训练指标
+    train_loss: float | None = Field(default=None, description="训练损失值")
+    train_accuracy: float | None = Field(default=None, ge=0, le=1, description="训练准确率")
+    val_loss: float | None = Field(default=None, description="验证损失值")
+    val_accuracy: float | None = Field(default=None, ge=0, le=1, description="验证准确率")
+    learning_rate: float | None = Field(default=None, description="当前学习率")
+
+    # 进度信息
+    epoch_progress: float | None = Field(default=None, ge=0, le=1, description="当前epoch进度")
+    overall_progress: float | None = Field(default=None, ge=0, le=1, description="整体进度")
+
+    # 资源监控
+    resource_metrics: dict | None = Field(default=None, description="资源使用指标")
+    additional_metrics: dict | None = Field(default=None, description="额外指标")
+
+
+class TrainProgressResponse(BaseModel):
+    """训练进度响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="进度记录ID")
+    task_id: str = Field(..., description="训练任务ID")
+    epoch: int = Field(..., description="当前训练轮数")
+    batch: int | None = Field(default=None, description="当前批次")
+    total_batches: int | None = Field(default=None, description="总批次数")
+
+    # 训练指标
+    train_loss: float | None = Field(default=None, description="训练损失值")
+    train_accuracy: float | None = Field(default=None, description="训练准确率")
+    val_loss: float | None = Field(default=None, description="验证损失值")
+    val_accuracy: float | None = Field(default=None, description="验证准确率")
+    learning_rate: float | None = Field(default=None, description="当前学习率")
+
+    # 进度信息
+    epoch_progress: float | None = Field(default=None, description="当前epoch进度")
+    overall_progress: float | None = Field(default=None, description="整体进度")
+
+    # 资源监控
+    resource_metrics: dict | None = Field(default=None, description="资源使用指标")
+    additional_metrics: dict | None = Field(default=None, description="额外指标")
+
+    # 时间戳
+    timestamp: str = Field(..., description="记录时间戳")
+
+    @field_validator('resource_metrics', 'additional_metrics', mode='before')
+    @classmethod
+    def parse_json_fields(cls, v):
+        """将 JSON 字符串转换为 dict"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
+
+    @field_validator('timestamp', mode='before')
+    @classmethod
+    def convert_datetime_to_str(cls, v):
+        """将 datetime 对象转换为字符串"""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):
+            return v.isoformat()
+        return str(v)
+
+
+class TrainProgressCurveResponse(BaseModel):
+    """训练曲线数据响应（用于图表展示）"""
+    task_id: str = Field(..., description="任务ID")
+    total_epochs: int = Field(..., description="总训练轮数")
+    current_epoch: int = Field(..., description="当前训练轮数")
+    data_points: list[dict] = Field(..., description="数据点列表（每个epoch的指标）")
+
+
+# ==================== WebSocket 实时推送数据 ====================
+
+class WSTrainingMetricsData(BaseModel):
+    """WebSocket训练指标数据（对应使用手册第206-229行）"""
+    epoch: int = Field(..., description="当前轮数")
+    batch: int = Field(..., description="当前批次")
+    total_batches: int = Field(..., description="总批次数")
+
+    metrics: TrainMetricsSchema = Field(..., description="训练指标")
+    progress: dict = Field(..., description="进度信息")
+
+
+class WSTrainingMetricsMessage(BaseModel):
+    """WebSocket训练指标消息"""
+    type: str = Field(default="training_metrics", description="消息类型")
+    timestamp: str = Field(..., description="时间戳")
+    data: WSTrainingMetricsData = Field(..., description="训练指标数据")
+
+
+class WSResourceMetricsMessage(BaseModel):
+    """WebSocket资源监控消息（对应使用手册第231-250行）"""
+    type: str = Field(default="resource_metrics", description="消息类型")
+    timestamp: str = Field(..., description="时间戳")
+    data: ResourceMetricsSchema = Field(..., description="资源监控数据")
+
+
+class WSTrainingLogMessage(BaseModel):
+    """WebSocket训练日志消息"""
+    type: str = Field(default="training_log", description="消息类型")
+    timestamp: str = Field(..., description="时间戳")
+    level: str = Field(..., description="日志级别(INFO/WARNING/ERROR)")
+    message: str = Field(..., description="日志消息")
+
+
+class WSTaskStatusMessage(BaseModel):
+    """WebSocket任务状态变更消息"""
+    type: str = Field(default="task_status", description="消息类型")
+    timestamp: str = Field(..., description="时间戳")
+    task_id: str = Field(..., description="任务ID")
+    old_status: str = Field(..., description="旧状态")
+    new_status: str = Field(..., description="新状态")
+    message: str | None = Field(default=None, description="状态变更说明")
+
+
+# ==================== 查询参数 ====================
+
+class TrainTaskQueryParam:
+    """训练任务查询参数"""
+    def __init__(
+        self,
+        task_id: str | None = Query(None, description="任务ID"),
+        status: str | None = Query(None, description="任务状态"),
+        dataset_id: int | None = Query(None, description="数据集ID"),
+        model_config_id: int | None = Query(None, description="模型配置ID"),
+        created_time: list[DateTimeStr] | None = Query(None, description="创建时间范围"),
+        created_id: int | None = Query(None, description="创建人ID"),
+    ) -> None:
+        # 精确查询
+        if task_id:
+            self.task_id = ("eq", task_id)
+        if status:
+            self.status = ("eq", status)
+        if dataset_id:
+            self.dataset_id = ("eq", dataset_id)
+        if model_config_id:
+            self.model_config_id = ("eq", model_config_id)
+        if created_id:
+            self.created_id = ("eq", created_id)
+
+        # 时间范围查询
+        if created_time and len(created_time) == 2:
+            self.created_time = ("between", (created_time[0], created_time[1]))

@@ -78,6 +78,25 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { title: "内部应用", icon: "Monitor", hidden: true, keepAlive: false },
         component: () => import("@/views/module_application/myapp/components/InternalApp.vue"),
       },
+      // 训练模块路由
+      {
+        path: "train/tasks",
+        name: "TrainTasks",
+        meta: { title: "训练任务", icon: "List", hidden: true, keepAlive: true },
+        component: () => import("@/views/module_application/train/tasks.vue"),
+      },
+      {
+        path: "train/create",
+        name: "TrainCreate",
+        meta: { title: "创建训练任务", icon: "Plus", hidden: true, keepAlive: false },
+        component: () => import("@/views/module_application/train/create.vue"),
+      },
+      {
+        path: "train/monitor/:taskId",
+        name: "TrainMonitor",
+        meta: { title: "训练监控", icon: "Monitor", hidden: true, keepAlive: false },
+        component: () => import("@/views/module_application/train/monitor.vue"),
+      },
     ],
   },
 ];

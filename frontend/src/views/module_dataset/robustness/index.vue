@@ -19,7 +19,7 @@
         <!-- 步骤1: 数据集选择 -->
         <div v-show="currentStep === 0" class="step-panel">
           <!-- Tab切换: 上传 / 选择已有数据集 -->
-          <el-tabs v-model="datasetTabType" class="dataset-tabs">
+          <el-tabs v-model="datasetTabType" class="dataset-tabs" @tab-change="handleTabChange">
             <el-tab-pane label="上传新数据集" name="upload">
               <DatasetUpload
                 v-if="datasetTabType === 'upload'"
@@ -128,6 +128,122 @@
                   </div>
                 </el-form-item>
               </el-form>
+            </el-tab-pane>
+
+            <!-- 训练任务列表标签页 -->
+            <el-tab-pane label="训练任务列表" name="tasks">
+              <div class="train-task-tab">
+                <!-- 头部提示与操作 -->
+                <div class="task-tab-header">
+                  <el-alert
+                    title="在此处可查看您的历史训练任务，选择已完成的任务进行鲁棒性评估，或跳转至监控页面查看训练详情"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    style="flex: 1"
+                  />
+                  <el-button :loading="trainTaskLoading" @click="loadTrainTasks">
+                    <el-icon class="mr-1"><Refresh /></el-icon>
+                    刷新
+                  </el-button>
+                  <el-button type="primary" @click="goToTrainTasksFull">
+                    <el-icon class="mr-1"><List /></el-icon>
+                    打开完整任务列表
+                  </el-button>
+                </div>
+
+                <!-- 任务列表 -->
+                <el-table
+                  v-loading="trainTaskLoading"
+                  :data="trainTaskList"
+                  border
+                  stripe
+                  style="margin-top: 16px"
+                >
+                  <el-table-column prop="task_id" label="任务ID" min-width="180" show-overflow-tooltip />
+                  <el-table-column prop="dataset_name" label="数据集" min-width="140" show-overflow-tooltip>
+                    <template #default="{ row }">
+                      {{ row.dataset_name || '-' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="model_name" label="模型" min-width="140" show-overflow-tooltip>
+                    <template #default="{ row }">
+                      {{ row.model_name || '-' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="训练进度" min-width="200">
+                    <template #default="{ row }">
+                      <div class="task-progress-cell">
+                        <el-progress
+                          :percentage="row.progress_percentage"
+                          :status="getTaskProgressStatus(row.status)"
+                          :stroke-width="14"
+                        />
+                        <span class="task-progress-text">
+                          {{ row.current_epoch }} / {{ row.total_epochs }} 轮
+                        </span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="status" label="状态" width="100" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="getTaskStatusTagType(row.status)" size="small">
+                        {{ getTaskStatusText(row.status) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="创建时间" width="180">
+                    <template #default="{ row }">
+                      {{ formatDateTime(row.created_time) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="220" align="center" fixed="right">
+                    <template #default="{ row }">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        link
+                        @click="goToTaskMonitor(row.task_id)"
+                      >
+                        <el-icon><View /></el-icon>
+                        查看
+                      </el-button>
+                      <el-button
+                        v-if="row.status === 'completed' && row.model_save_path"
+                        size="small"
+                        type="success"
+                        link
+                        @click="handleTaskDownloadModel(row)"
+                      >
+                        <el-icon><Download /></el-icon>
+                        下载模型
+                      </el-button>
+                      <el-button
+                        v-if="row.status === 'completed'"
+                        size="small"
+                        type="warning"
+                        link
+                        @click="handleUseForEvaluation(row)"
+                      >
+                        <el-icon><CircleCheck /></el-icon>
+                        用于评估
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+
+                <!-- 分页 -->
+                <el-pagination
+                  v-model:current-page="trainTaskQuery.page_no"
+                  v-model:page-size="trainTaskQuery.page_size"
+                  :total="trainTaskTotal"
+                  :page-sizes="[10, 20]"
+                  layout="total, sizes, prev, pager, next"
+                  style="margin-top: 12px; justify-content: flex-end"
+                  @size-change="loadTrainTasks"
+                  @current-change="loadTrainTasks"
+                />
+              </div>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -651,7 +767,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onActivated, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   FolderOpened,
   Cpu,
@@ -669,10 +786,12 @@ import {
   TrophyBase,
   Download,
   View,
+  Refresh,
   RefreshRight,
   ArrowLeft,
   ArrowRight,
   Delete,
+  List,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatToDateTime } from "@/utils/dateUtil";
@@ -680,11 +799,14 @@ import DatasetAPI, { type DatasetInfo } from "@/api/module_dataset/dataset";
 import DatasetUpload from "@/views/module_dataset/dataset/components/DatasetUpload.vue";
 import ModelRecommendation from "./components/ModelRecommendation.vue";
 import type { ModelRecommendationItem } from "@/api/module_train/model";
+import { TrainTaskAPI, type TrainTaskInfo } from "@/api/module_application/train";
 
 defineOptions({
   name: "RobustnessEvaluation",
   inheritAttrs: false,
 });
+
+const router = useRouter();
 
 // 当前步骤
 const currentStep = ref(0);
@@ -726,7 +848,6 @@ const evaluationForm = reactive({
   perturbationStrength: 50,
   evaluationStrategy: "full",
   // 步骤4: 参数配置
-  batchSize: 32,
   numWorkers: 4,
   gpuDevice: "auto",
   description: "",
@@ -1093,11 +1214,56 @@ async function handleDeleteDataset() {
 }
 
 // 下一步
-function nextStep() {
+async function nextStep() {
   if (!canProceed.value) {
     ElMessage.warning("请完成当前步骤的必填项");
     return;
   }
+
+  // 如果是步骤1（模型选择与训练），创建训练任务并跳转到训练监控页面
+  if (currentStep.value === 1) {
+    try {
+      ElMessage.info("正在创建训练任务...");
+
+      // 构建训练配置
+      const trainConfig = {
+        epochs: evaluationForm.trainingEpochs,
+        batch_size: evaluationForm.batchSize,
+        learning_rate: evaluationForm.learningRate,
+        optimizer: evaluationForm.optimizer,
+        loss_function: evaluationForm.lossFunction,
+        scheduler: evaluationForm.scheduler,
+        weight_decay: evaluationForm.weightDecay,
+        momentum: evaluationForm.momentum,
+        device: evaluationForm.gpuDevice === "auto" ? "cuda" : evaluationForm.gpuDevice,
+        num_workers: evaluationForm.numWorkers,
+      };
+
+      // 创建训练任务
+      const response = await TrainTaskAPI.create({
+        dataset_id: evaluationForm.datasetId!,
+        model_config_id: evaluationForm.modelId!,
+        train_config: trainConfig,
+        task_name: `鲁棒性评估训练-${selectedDataset.value?.name}`,
+        description: `为鲁棒性评估准备的模型训练任务`,
+      });
+
+      const taskId = response.data.data.task_id;
+      ElMessage.success("训练任务创建成功！即将跳转到训练监控页面");
+
+      // 跳转到训练监控页面
+      // 使用 query 参数标记这是从鲁棒性评估来的，训练完成后可以返回
+      router.push({
+        path: `/train/monitor/${taskId}`,
+        query: { from: "robustness" },
+      });
+    } catch (error: any) {
+      ElMessage.error("创建训练任务失败: " + (error.message || "未知错误"));
+    }
+    return;
+  }
+
+  // 其他步骤正常进入下一步
   currentStep.value++;
 }
 
@@ -1184,9 +1350,145 @@ function resetEvaluation() {
   selectedModelInfo.value = null;
 }
 
+// ==================== 训练任务列表相关 ====================
+
+// 训练任务列表状态
+const trainTaskLoading = ref(false);
+const trainTaskList = ref<TrainTaskInfo[]>([]);
+const trainTaskTotal = ref(0);
+const trainTaskQuery = ref({ page_no: 1, page_size: 10 });
+
+// 加载训练任务列表
+async function loadTrainTasks() {
+  trainTaskLoading.value = true;
+  try {
+    const response = await TrainTaskAPI.getList(trainTaskQuery.value);
+    trainTaskList.value = response.data.data.items;
+    trainTaskTotal.value = response.data.data.total;
+  } catch (error: any) {
+    ElMessage.error("加载训练任务失败: " + (error.message || "未知错误"));
+  } finally {
+    trainTaskLoading.value = false;
+  }
+}
+
+// 跳转到完整训练任务列表页
+function goToTrainTasksFull() {
+  router.push("/train/tasks");
+}
+
+// 跳转到任务监控页
+function goToTaskMonitor(taskId: string) {
+  router.push(`/train/monitor/${taskId}`);
+}
+
+// 下载已完成任务的模型文件
+async function handleTaskDownloadModel(row: TrainTaskInfo) {
+  if (!row.model_save_path) {
+    ElMessage.warning('该任务暂无可下载的模型文件');
+    return;
+  }
+  try {
+    await TrainTaskAPI.downloadModel(row.task_id, row.model_save_path);
+  } catch (error: any) {
+    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+  }
+}
+
+// 使用已完成的训练模型进行评估（切换到步骤2并填充数据集信息）
+function handleUseForEvaluation(row: TrainTaskInfo) {
+  if (!row.dataset_id) {
+    ElMessage.warning('无法获取该任务的数据集信息');
+    return;
+  }
+  // 将数据集选中并跳转到步骤2
+  evaluationForm.datasetId = row.dataset_id;
+  // 如果有数据集详情，尝试同步模态信息
+  const matchedDataset = datasets.value.find((d) => d.id === row.dataset_id);
+  if (matchedDataset) {
+    selectedDataset.value = matchedDataset;
+    evaluationForm.modality = matchedDataset.modality;
+  }
+  currentStep.value = 1;
+  ElMessage.success('已切换到模型选择步骤，请继续配置训练参数');
+}
+
+// 任务状态文本
+function getTaskStatusText(status: string): string {
+  const statusMap: Record<string, string> = {
+    created: "已创建",
+    pending: "等待中",
+    running: "运行中",
+    paused: "已暂停",
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+  };
+  return statusMap[status] || status;
+}
+
+// 任务状态标签类型
+function getTaskStatusTagType(status: string): "success" | "info" | "warning" | "danger" | "" {
+  const typeMap: Record<string, "success" | "info" | "warning" | "danger"> = {
+    completed: "success",
+    running: "info",
+    pending: "info",
+    paused: "warning",
+    failed: "danger",
+    cancelled: "danger",
+    created: "info",
+  };
+  return typeMap[status] || "";
+}
+
+// 任务进度状态
+function getTaskProgressStatus(status: string): "success" | "exception" | "warning" | "" {
+  if (status === "completed") return "success";
+  if (status === "failed" || status === "cancelled") return "exception";
+  if (status === "paused") return "warning";
+  return "";
+}
+
+// 切换到训练任务标签时自动加载
+function handleTabChange(tabName: string) {
+  if (tabName === "tasks") {
+    loadTrainTasks();
+  }
+}
+
+// 当前路由路径
+const currentRoutePath = router.currentRoute.value.path;
+
+// keepAlive 模式下重新激活时刷新任务列表
+onActivated(() => {
+  if (datasetTabType.value === "tasks") {
+    loadTrainTasks();
+  }
+});
+
+// 监听路由变化：从其他页面返回时刷新任务列表（非 keepAlive 场景的补充）
+watch(
+  () => router.currentRoute.value.path,
+  (newPath) => {
+    if (newPath === currentRoutePath && datasetTabType.value === "tasks") {
+      loadTrainTasks();
+    }
+  }
+);
+
 // 初始化
 onMounted(async () => {
   await loadDatasets();
+
+  // 检查是否从训练监控页面返回
+  const stepParam = router.currentRoute.value.query.step;
+  if (stepParam) {
+    const step = parseInt(stepParam as string);
+    if (!isNaN(step) && step >= 0 && step <= 6) {
+      currentStep.value = step;
+      ElMessage.success('训练已完成，请继续配置鲁棒性评估参数');
+    }
+  }
 });
 </script>
 
@@ -1228,6 +1530,35 @@ onMounted(async () => {
 
           :deep(.el-tabs__item.is-active) {
             color: #667eea;
+          }
+        }
+
+        .train-task-tab {
+          .task-tab-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+
+            .el-alert {
+              flex: 1;
+            }
+
+            .el-button {
+              white-space: nowrap;
+              flex-shrink: 0;
+            }
+          }
+
+          .task-progress-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            .task-progress-text {
+              font-size: 12px;
+              color: var(--el-text-color-secondary);
+              text-align: center;
+            }
           }
         }
 

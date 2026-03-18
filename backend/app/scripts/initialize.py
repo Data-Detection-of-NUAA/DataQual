@@ -18,6 +18,13 @@ from app.api.v1.module_system.menu.model import MenuModel
 from app.api.v1.module_system.params.model import ParamsModel
 from app.api.v1.module_system.dict.model import DictTypeModel, DictDataModel
 
+# 导入训练模块的模型，确保它们被注册到SQLAlchemy metadata
+from app.plugin.module_application.train.model import (
+    ModelConfigModel,
+    TrainTaskModel,
+    TrainProgressModel
+)
+
 
 class InitializeData:
     """
