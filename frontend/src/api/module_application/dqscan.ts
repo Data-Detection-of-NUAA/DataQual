@@ -30,6 +30,7 @@ export interface DQScanCreateTaskIn {
   baseline_file_id?: string;
   algorithm: string;
   params?: Record<string, any>;
+  data_type?: string;
 }
 
 export type DQScanTaskStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";

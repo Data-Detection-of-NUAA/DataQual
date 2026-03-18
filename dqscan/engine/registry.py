@@ -41,6 +41,10 @@ def _discover() -> None:
 
     register(TabularQualityEngine())
 
+    from .algorithms.image.image_quality_engine import ImageQualityEngine
+
+    register(ImageQualityEngine())
+
 
 def list_algorithms() -> list[dict[str, Any]]:
     """返回所有已注册算法的 spec 信息（用于 UI 展示）。"""

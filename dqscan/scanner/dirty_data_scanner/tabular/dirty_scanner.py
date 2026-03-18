@@ -82,7 +82,7 @@ class TabularDirtyScanner(BaseScanner):
         check_range = enable_all or "range" in enabled_checks
 
         results: dict[str, Any] = {
-            "algorithm": "ECOD + 3σ Rule" if PYOD_AVAILABLE else "3σ Rule (Fallback - pyod未安装)",
+            "algorithm": "ECOD + 3σ规则" if PYOD_AVAILABLE else "3σ规则（降级：未安装 pyod）",
             "total_samples": len(data),
             "total_features": len(data.columns),
             "numerical_features": len(numerical_columns),
@@ -155,12 +155,17 @@ class TabularDirtyScanner(BaseScanner):
             total_issues += int(anomaly_results.get("anomaly_count", len(anomaly_indices)) or 0)
             take = min(len(anomaly_indices), remaining_examples)
             for idx in anomaly_indices[:take]:
+                row_preview = self._row_preview(data, int(idx))
+                try:
+                    row_index = data.index[int(idx)]
+                except Exception:
+                    row_index = int(idx)
                 detailed_issues.append(
                     {
                         "data_id": f"row_{idx}",
                         "issue_type": "异常值",
                         "severity": "moderate" if results["anomaly_rate"] > 0.1 else "light",
-                        "details": {"affected_fields": numerical_columns},
+                        "details": {"affected_fields": numerical_columns, "row_index": row_index, "row_preview": row_preview},
                     }
                 )
             remaining_examples -= take
@@ -173,12 +178,20 @@ class TabularDirtyScanner(BaseScanner):
                 count = int(col_info.get("count", 0) or 0)
                 rate = float(col_info.get("rate", 0.0) or 0.0)
                 total_issues += count
+                try:
+                    sample_missing_row_ids = data.index[data[str(col_name)].isna()].tolist()[:5]
+                except Exception:
+                    sample_missing_row_ids = []
                 detailed_issues.append(
                     {
                         "data_id": f"column_{col_name}",
                         "issue_type": "缺失值",
                         "severity": "severe" if rate > 0.15 else "light",
-                        "details": {"missing_count": count},
+                        "details": {
+                            "missing_count": count,
+                            "missing_rate": round(rate, 6),
+                            "row_preview": {"column": str(col_name), "sample_missing_row_ids": sample_missing_row_ids},
+                        },
                     }
                 )
                 remaining_examples -= 1
@@ -189,7 +202,23 @@ class TabularDirtyScanner(BaseScanner):
             dup_indices = duplicate_results.get("duplicate_indices") or []
             total_issues += len(dup_indices)
             for idx in dup_indices[:remaining_examples]:
-                detailed_issues.append({"data_id": f"row_{idx}", "issue_type": "重复数据", "severity": "light", "details": {}})
+                row_preview = self._row_preview(data, int(idx))
+                try:
+                    row_index = data.index[int(idx)]
+                except Exception:
+                    row_index = int(idx)
+                detailed_issues.append(
+                    {
+                        "data_id": f"row_{idx}",
+                        "issue_type": "重复数据",
+                        "severity": "light",
+                        "details": {
+                            "row_index": row_index,
+                            "key_columns": duplicate_results.get("key_columns") or [],
+                            "row_preview": row_preview,
+                        },
+                    }
+                )
                 remaining_examples -= 1
                 if remaining_examples <= 0:
                     break
@@ -198,6 +227,31 @@ class TabularDirtyScanner(BaseScanner):
         results["issue_percentage"] = float(total_issues / len(data)) if len(data) > 0 else 0.0
         results["detailed_issues"] = detailed_issues
         return results
+
+    def _row_preview(self, data: "pd.DataFrame", i: int, *, max_fields: int = 30) -> dict[str, Any]:
+        if not PANDAS_AVAILABLE:
+            return {}
+        try:
+            row = data.iloc[int(i)]
+        except Exception:
+            return {}
+
+        cols = list(data.columns)[: int(max_fields)]
+        preview: dict[str, Any] = {}
+        for c in cols:
+            try:
+                v = row.get(c)
+            except Exception:
+                v = None
+            try:
+                if pd.isna(v):
+                    v = None
+            except Exception:
+                pass
+            if isinstance(v, str) and len(v) > 200:
+                v = v[:200] + "…"
+            preview[str(c)] = v
+        return preview
 
     def _detect_anomalies(self, data: "pd.DataFrame", numerical_columns: list[str]) -> dict[str, Any]:
         """
@@ -334,4 +388,3 @@ class TabularDirtyScanner(BaseScanner):
             "sigma": float(sigma),
             "iqr_factor": float(iqr_factor),
         }
-

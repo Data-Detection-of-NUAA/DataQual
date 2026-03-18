@@ -21,9 +21,11 @@ import asyncio
 import copy
 import json
 import os
+import shutil
 import sys
 import time
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -155,6 +157,7 @@ _PHYSICS_ALGOS = [
     {"key": "causal_graph", "label": "因果图一致性", "desc": "基于因果图做一致性检查。", "status": "planned"},
     {"key": "temporal_rules", "label": "时序物理规律", "desc": "适用于时序数据的物理规律校验。", "status": "planned"},
 ]
+
 
 _DIRTY_MISSING_ALGOS = _BASE_DIRTY_ALGOS + [
     {
@@ -437,58 +440,50 @@ _DEFECT_CATALOG = {
         {
             "key": "physics",
             "label": "物理保真度与规则体系",
-            "desc": "规则/约束一致性与守恒校验",
+            "desc": "按列配置约束与业务规则，扫描数据质量",
             "children": [
                 {
-                    "key": "physics.group_schema",
-                    "label": "Schema 与字段约束",
-                    "desc": "类型/范围/枚举/依赖约束",
-                    "children": [
-                        {
-                            "key": "physics.schema",
-                            "label": "Schema 校验（字段约束）",
-                            "desc": "字段类型、范围、枚举与必填约束检查。",
-                            "badge": {"text": "推荐", "type": "success"},
-                            "status": "ready",
-                            "module": "physics",
-                            "algorithms": _PHYSICS_ALGOS,
-                        }
-                    ],
-                },
-                {
-                    "key": "physics.group_conservation",
-                    "label": "跨字段一致性",
-                    "desc": "守恒、平衡、逻辑一致性等",
-                    "children": [
-                        {
-                            "key": "physics.conservation",
-                            "label": "守恒/一致性校验",
-                            "desc": "启用跨字段启发式规则与自定义 min/max 约束。",
-                            "status": "ready",
-                            "module": "physics",
-                            "algorithms": _PHYSICS_ALGOS,
-                        }
-                    ],
-                },
-                {
-                    "key": "physics.group_future",
-                    "label": "高级规则（Advanced）",
-                    "desc": "因果/时序/结构化规则",
-                    "children": [
-                        {
-                            "key": "physics.temporal",
-                            "label": "时序物理规律",
-                            "desc": "面向时序数据的物理规律校验（例如单调、周期、滞后）。",
-                            "badge": {"text": "即将上线", "type": "warning"},
-                            "status": "planned",
-                            "disabled": True,
-                            "module": "physics",
-                            "algorithms": _PHYSICS_ALGOS,
-                        }
-                    ],
-                },
+                    "key": "physics.rules",
+                    "label": "规则扫描",
+                    "desc": "对每列设置 min/max、非空、正则、允许值等约束，支持跨列关系/条件/求和/唯一性规则。",
+                    "badge": {"text": "推荐", "type": "success"},
+                    "status": "ready",
+                    "module": "physics",
+                    "algorithms": _PHYSICS_ALGOS,
+                }
             ],
         },
+    ],
+}
+
+_IMAGE_DEFECT_CATALOG = {
+    "modality": "image",
+    "engine": "image_quality_engine",
+    "tree": [
+        {
+            "key": "dirty_data",
+            "label": "脏数据体系",
+            "children": [
+                {
+                    "key": "dirty_data.image_label_mismatch",
+                    "label": "图片分类错标检测",
+                    "desc": "检测图片数据集中标签可能标错的样本，基于视觉特征与标签一致性分析",
+                    "group": "group_label",
+                    "group_label": "标签质量",
+                    "status": "ready",
+                    "algorithms": [
+                        {"key": "simifeat_knn", "label": "SimiFeat KNN (CLIP)", "status": "ready", "badge": "推荐"},
+                        {"key": "phash_outlier", "label": "pHash 类内离群", "status": "ready", "badge": "轻量"},
+                    ],
+                    "params_schema": {
+                        "label_column": {"type": "string", "required": True, "default": "label"},
+                        "image_column": {"type": "string", "required": True, "default": "image_path"},
+                        "k": {"type": "int", "default": 10, "min": 3, "max": 50},
+                        "threshold": {"type": "float", "default": 0.5, "min": 0.1, "max": 0.9},
+                    },
+                }
+            ],
+        }
     ],
 }
 
@@ -497,6 +492,7 @@ _DEFECT_CATALOG = {
 class _TaskState:
     """任务在内存中的运行态状态（给 HTTP 查询与 WS snapshot 使用）。"""
     task_id: str
+    data_type: str = "tabular"  # tabular | image
     status: str = "PENDING"
     progress: int = 0
     started_at: float | None = None
@@ -585,11 +581,21 @@ class DQScanService:
     @classmethod
     async def get_defects_catalog(cls, *, modality: str = "tabular", engine: str | None = None) -> dict[str, Any]:
         """返回缺陷树（用于前端渲染缺陷体系与算法选项）。"""
-        if modality and modality != "tabular":
-            raise ValueError("当前仅支持 tabular 模态")
-        if engine and engine != "tabular_quality_engine":
-            raise ValueError("engine 不匹配")
-        return copy.deepcopy(_DEFECT_CATALOG)
+        _CATALOG_MAP: dict[str, dict[str, Any]] = {
+            "tabular": _DEFECT_CATALOG,
+            "image": _IMAGE_DEFECT_CATALOG,
+        }
+        catalog = _CATALOG_MAP.get(modality)
+        if catalog is None:
+            raise ValueError(f"不支持的模态: {modality}，当前支持: {', '.join(_CATALOG_MAP)}")
+        if engine and engine != catalog["engine"]:
+            raise ValueError(f"engine 不匹配（期望 {catalog['engine']}，收到 {engine}）")
+        return copy.deepcopy(catalog)
+
+    # ZIP 上传限制常量
+    _ZIP_MAX_BYTES: int = 2 * 1024 * 1024 * 1024  # 2 GB
+    _ZIP_MAX_FILES: int = 50_000
+    _ZIP_ALLOWED_IMAGE_EXTS: set[str] = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
     @classmethod
     async def upload(cls, file: UploadFile, *, max_bytes: int) -> dict[str, Any]:
@@ -599,10 +605,11 @@ class DQScanService:
         - 以 1MB chunk 读取，避免把大文件一次性加载进内存；
         - 超过 max_bytes 直接报错；
         - 返回的 file_id 是“相对 backend 根目录”的路径字符串。
+        - 支持 .zip 文件上传（用于图片数据集），会解压提取图片与 CSV 文件。
         """
         suffix = Path(file.filename or "").suffix.lower()
-        if suffix not in {".csv", ".txt"}:
-            raise ValueError("仅支持 .csv / .txt")
+        if suffix not in {".csv", ".txt", ".zip"}:
+            raise ValueError("仅支持 .csv / .txt / .zip")
 
         _uploads_root().mkdir(parents=True, exist_ok=True)
         file_id = f"{uuid.uuid4().hex}_{Path(file.filename or 'upload').name}"
@@ -626,11 +633,99 @@ class DQScanService:
                 pass
             raise
 
-        return {
-            "file_id": _safe_rel_file_id(target),
-            "filename": file.filename or target.name,
-            "file_size": size,
-        }
+        # 非 ZIP 文件：直接返回
+        if suffix != ".zip":
+            return {
+                "file_id": _safe_rel_file_id(target),
+                "filename": file.filename or target.name,
+                "file_size": size,
+            }
+
+        # --- ZIP 文件处理 ---
+        return await cls._handle_zip_upload(target, file.filename or target.name, size)
+
+    @classmethod
+    async def _handle_zip_upload(cls, zip_path: Path, original_filename: str, zip_size: int) -> dict[str, Any]:
+        """
+        解压 ZIP 文件，提取图片与 CSV，返回结构化信息。
+
+        安全措施：
+        - Zip Slip 防护：验证解压路径不越过目标目录
+        - 总大小限制 2 GB
+        - 文件数限制 50,000
+        - 仅提取图片格式与 CSV
+        """
+        extract_dir_name = f"{uuid.uuid4().hex}_images"
+        extract_dir = (_uploads_root() / extract_dir_name).resolve()
+
+        try:
+            extract_dir.mkdir(parents=True, exist_ok=True)
+
+            image_count = 0
+            csv_files: list[str] = []
+            total_extracted_size = 0
+            file_count = 0
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                for info in zf.infolist():
+                    # 跳过目录条目
+                    if info.is_dir():
+                        continue
+
+                    entry_suffix = Path(info.filename).suffix.lower()
+                    is_image = entry_suffix in cls._ZIP_ALLOWED_IMAGE_EXTS
+                    is_csv = entry_suffix == ".csv"
+
+                    # 仅提取图片和 CSV
+                    if not is_image and not is_csv:
+                        continue
+
+                    # 文件数限制
+                    file_count += 1
+                    if file_count > cls._ZIP_MAX_FILES:
+                        raise ValueError(f"ZIP 内文件数超过限制：{cls._ZIP_MAX_FILES}")
+
+                    # 总大小限制
+                    total_extracted_size += info.file_size
+                    if total_extracted_size > cls._ZIP_MAX_BYTES:
+                        raise ValueError(f"ZIP 解压总大小超过限制：{cls._ZIP_MAX_BYTES} bytes")
+
+                    # Zip Slip 防护：确保解压路径不越过目标目录
+                    target_path = (extract_dir / info.filename).resolve()
+                    if extract_dir not in target_path.parents and target_path != extract_dir:
+                        raise ValueError(f"Zip Slip 攻击检测：非法路径 {info.filename}")
+
+                    # 创建父目录并解压
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(info) as src, open(target_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+
+                    if is_image:
+                        image_count += 1
+                    elif is_csv:
+                        # 返回相对于 extract_dir 的路径
+                        csv_files.append(str(target_path.relative_to(extract_dir)))
+
+            return {
+                "file_id": _safe_rel_file_id(extract_dir),
+                "filename": original_filename,
+                "file_size": zip_size,
+                "image_count": image_count,
+                "csv_files": csv_files,
+            }
+        except Exception:
+            # 清理解压目录
+            try:
+                if extract_dir.exists():
+                    shutil.rmtree(extract_dir)
+            except Exception:
+                pass
+            # 清理原始 ZIP 文件
+            try:
+                zip_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
     @classmethod
     async def create_task(
@@ -640,18 +735,32 @@ class DQScanService:
         baseline_file_id: str | None,
         algorithm: str,
         params: dict[str, Any] | None,
+        data_type: str = "tabular",
     ) -> str:
         """
         创建任务并异步执行。
 
         返回 task_id。任务执行不阻塞当前 HTTP 请求（后台运行）。
+
+        参数:
+            data_type: 数据模态，"tabular"（默认）或 "image"。
+                       image 模态下 algorithm 默认为 "image_quality_engine"。
         """
-        cls._validate_params(params, baseline_file_id)
+        if data_type not in {"tabular", "image"}:
+            raise ValueError(f"不支持的 data_type: {data_type}")
+
+        # image 模态默认 algorithm
+        if data_type == "image" and not algorithm:
+            algorithm = "image_quality_engine"
+
+        cls._validate_params(params, baseline_file_id, data_type=data_type)
         task_id = uuid.uuid4().hex
         task_dir = (_tasks_root() / task_id).resolve()
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        state = _TaskState(task_id=task_id, status="PENDING", progress=0, baseline_file_id=baseline_file_id)
+        state = _TaskState(
+            task_id=task_id, data_type=data_type, status="PENDING", progress=0, baseline_file_id=baseline_file_id
+        )
         async with cls._lock:
             cls._tasks[task_id] = state
 
@@ -675,7 +784,19 @@ class DQScanService:
         return task_id
 
     @classmethod
-    def _validate_params(cls, params: dict[str, Any] | None, baseline_file_id: str | None) -> None:
+    def _validate_params(
+        cls, params: dict[str, Any] | None, baseline_file_id: str | None, *, data_type: str = "tabular"
+    ) -> None:
+        """按 data_type 分派参数校验。"""
+        if data_type == "image":
+            cls._validate_params_image(params)
+            return
+        # --- tabular 校验（原有逻辑） ---
+        cls._validate_params_tabular(params, baseline_file_id)
+
+    @classmethod
+    def _validate_params_tabular(cls, params: dict[str, Any] | None, baseline_file_id: str | None) -> None:
+        """表格模态的参数校验（原有逻辑，保持不变）。"""
         if not params or not isinstance(params, dict):
             return
 
@@ -719,6 +840,24 @@ class DQScanService:
             label_column = params_block.get("label_column") or params.get("label_column") or dirty_cfg.get("label_column")
             if not label_column:
                 raise ValueError("已启用疑似错标检测，但未提供 label_column")
+
+    @classmethod
+    def _validate_params_image(cls, params: dict[str, Any] | None) -> None:
+        """图片模态的参数校验：校验 label_csv_path, image_column, label_column。"""
+        if not params or not isinstance(params, dict):
+            raise ValueError("图片模态必须提供 params")
+
+        label_csv_path = params.get("label_csv_path")
+        if not label_csv_path or not isinstance(label_csv_path, str):
+            raise ValueError("图片模态必须提供 label_csv_path（标签 CSV 文件路径）")
+
+        image_column = params.get("image_column")
+        if not image_column or not isinstance(image_column, str):
+            raise ValueError("图片模态必须提供 image_column（图片路径列名）")
+
+        label_column = params.get("label_column")
+        if not label_column or not isinstance(label_column, str):
+            raise ValueError("图片模态必须提供 label_column（标签列名）")
 
     @classmethod
     async def get_task(cls, task_id: str) -> dict[str, Any]:

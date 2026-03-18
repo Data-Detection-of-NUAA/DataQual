@@ -171,6 +171,7 @@ class TabularQualityEngine:
             TabularDistributionScanner,
             TabularPhysicsScanner,
         )
+        from dqscan.scanner.physics_scanner import TabularPhysicsScanner
         from dqscan.reporters import DetectionReportGenerator
 
         task_reports: dict[str, Any] = {}
@@ -505,9 +506,9 @@ class TabularQualityEngine:
                         if isinstance(v, dict):
                             constraints[str(k)] = {**v}
 
-                # 支持结构化规则（DSL）：优先从 defects.selected 的 params 取（便于缺陷级参数），其次取 physics.rules
+                # 收集规则：从 defects.selected 和 physics.rules 汇总
                 rules: list[dict[str, Any]] = []
-                for defect_key in ("physics.schema", "physics.conservation"):
+                for defect_key in ("physics.rules",):
                     entry = _defect_entry(defect_key)
                     p = entry.get("params") if isinstance(entry.get("params"), dict) else {}
                     rr = p.get("rules")
@@ -538,12 +539,11 @@ class TabularQualityEngine:
                 scanner = TabularPhysicsScanner(
                     constraints=constraints,
                     rules=rules,
-                    check_conservation=bool(phy_cfg.get("check_conservation", False)),
+                    check_conservation=False,
                 )
                 res = scanner.scan(df)
                 if isinstance(res, dict):
                     res.setdefault("auto_constraints", bool(phy_cfg.get("auto_constraints", True)))
-                    res.setdefault("check_conservation", bool(phy_cfg.get("check_conservation", False)))
                     res.setdefault("rules_total", len(rules))
 
             else:
